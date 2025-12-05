@@ -1,7 +1,7 @@
 """
 Роуты для работы с группами
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 import sys
 import os
@@ -16,12 +16,13 @@ if parsing_path_str not in sys.path:
 
 # Теперь импортируем из parsing
 from database import get_db, Group
+from backend.utils.auth import verify_token
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
 
 @router.get("")
-async def get_groups():
+async def get_groups(token: str = Depends(verify_token)):
     """
     Получить список всех групп
     
@@ -30,9 +31,10 @@ async def get_groups():
     """
     db: Session = get_db()
     try:
+        # Используем параметризованные запросы SQLAlchemy для защиты от SQL инъекций
         groups = db.query(Group).order_by(Group.name).all()
-        return [{"id": g.id, "name": g.name} for g in groups]
+        return [{"id": int(g.id), "name": str(g.name)} for g in groups]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ошибка при получении данных")
     finally:
         db.close()

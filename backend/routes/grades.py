@@ -1,7 +1,7 @@
 """
 Роуты для работы с оценками
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 import sys
 from pathlib import Path
@@ -15,13 +15,14 @@ if parsing_path_str not in sys.path:
 
 from database import get_db, Student, Grade
 from backend.utils.helpers import date_to_str
+from backend.utils.auth import verify_token
 from typing import Optional
 
 router = APIRouter(prefix="/api/grades", tags=["grades"])
 
 
 @router.get("")
-async def get_grades(subject_id: int, group_id: Optional[int] = None):
+async def get_grades(subject_id: int, group_id: Optional[int] = None, token: str = Depends(verify_token)):
     """
     Получить оценки по предмету (и опционально по группе)
     

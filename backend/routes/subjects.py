@@ -1,7 +1,7 @@
 """
 Роуты для работы с предметами
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import Optional
 import sys
@@ -15,12 +15,13 @@ if parsing_path_str not in sys.path:
     sys.path.insert(0, parsing_path_str)
 
 from database import get_db, Subject
+from backend.utils.auth import verify_token
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
 
 
 @router.get("")
-async def get_subjects(group_id: Optional[int] = None):
+async def get_subjects(group_id: Optional[int] = None, token: str = Depends(verify_token)):
     """
     Получить список предметов
     

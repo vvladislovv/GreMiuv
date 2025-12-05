@@ -1,7 +1,7 @@
 """
 Роуты для работы со статистикой
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List
@@ -16,6 +16,7 @@ if parsing_path_str not in sys.path:
     sys.path.insert(0, parsing_path_str)
 
 from database import get_db, Student, Grade, Group
+from backend.utils.auth import verify_token
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -39,7 +40,7 @@ class GradeRatingItem(BaseModel):
 
 
 @router.get("")
-async def get_stats(group_id: int, subject_id: int):
+async def get_stats(group_id: int, subject_id: int, token: str = Depends(verify_token)):
     """
     Получить статистику по группе и предмету
     
@@ -101,7 +102,8 @@ async def get_stats(group_id: int, subject_id: int):
 
 @router.get("/rating/absences", response_model=List[AbsenceRatingItem])
 async def get_absences_rating(
-    group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)")
+    group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)"),
+    token: str = Depends(verify_token)
 ):
     """
     Получить рейтинг группы по пропускам (по всем предметам)
@@ -185,7 +187,8 @@ async def get_absences_rating(
 
 @router.get("/rating/grades", response_model=List[GradeRatingItem])
 async def get_grades_rating(
-    group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)")
+    group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)"),
+    token: str = Depends(verify_token)
 ):
     """
     Получить рейтинг группы по оценкам (средний балл по всем предметам)

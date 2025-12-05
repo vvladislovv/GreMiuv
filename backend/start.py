@@ -14,6 +14,12 @@ sys.path.insert(0, str(project_root))
 
 from backend.config import SERVER_HOST, SERVER_PORT
 
+# Импортируем систему логирования
+parsing_path = project_root / "parsing"
+if str(parsing_path) not in sys.path:
+    sys.path.insert(0, str(parsing_path))
+from logger import log_backend_info, log_backend_error
+
 
 def run_parser():
     """Запуск парсера в отдельном потоке"""
@@ -25,9 +31,18 @@ def run_parser():
         
         from main import main
         print("📊 Парсер запущен, обновление каждые 15 минут...")
+        log_backend_info(
+            "Парсер запущен",
+            "Парсер запущен в отдельном потоке, обновление каждые 15 минут"
+        )
         main()
     except Exception as e:
         print(f"❌ Ошибка в парсере: {e}")
+        log_backend_error(
+            f"Ошибка в парсере: {str(e)}",
+            error=e,
+            description="Критическая ошибка в потоке парсера"
+        )
         import traceback
         traceback.print_exc()
 
@@ -40,6 +55,10 @@ def run_backend():
     def signal_handler(sig, frame):
         """Обработчик сигнала для корректного завершения"""
         print("\n🛑 Получен сигнал остановки сервера...")
+        log_backend_info(
+            "Получен сигнал остановки сервера",
+            f"Сигнал: {sig}, остановка API сервера"
+        )
         raise KeyboardInterrupt
     
     # Устанавливаем обработчик сигналов
@@ -47,6 +66,10 @@ def run_backend():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
+        log_backend_info(
+            f"Запуск API сервера",
+            f"Сервер запускается на {SERVER_HOST}:{SERVER_PORT}"
+        )
         uvicorn.run(
             "backend.app:app",
             host=SERVER_HOST,
@@ -56,9 +79,18 @@ def run_backend():
         )
     except KeyboardInterrupt:
         # Корректное завершение при Ctrl+C
+        log_backend_info(
+            "API сервер остановлен",
+            "Сервер корректно завершил работу"
+        )
         raise
     except Exception as e:
         print(f"❌ Ошибка в бэкенде: {e}")
+        log_backend_error(
+            f"Ошибка в бэкенде: {str(e)}",
+            error=e,
+            description="Критическая ошибка в API сервере"
+        )
         import traceback
         traceback.print_exc()
 
@@ -75,6 +107,10 @@ def run_telegram_bot():
         if not BOT_TOKEN or BOT_TOKEN == "вставьте_свой_токен_сюда":
             print("⚠️  Telegram бот не запущен: токен не установлен в .env файле")
             print("   Для запуска бота создайте файл .env в корне проекта и добавьте BOT_TOKEN")
+            log_backend_info(
+                "Telegram бот не запущен",
+                "Токен бота не установлен в .env файле"
+            )
             return
         
         # Инициализируем БД перед запуском бота
@@ -85,6 +121,7 @@ def run_telegram_bot():
         from aiogram import Bot, Dispatcher
         from aiogram.fsm.storage.memory import MemoryStorage
         from telegram.handlers import common, registration, settings
+        from logger import log_telegram_info, log_telegram_error, log_telegram_warning
         import logging
         import os
         
@@ -124,14 +161,27 @@ def run_telegram_bot():
                 
                 # Проверяем подключение к Telegram API
                 bot_logger.info("Проверка подключения к Telegram API...")
+                log_telegram_info(
+                    "Проверка подключения к Telegram API",
+                    "Попытка подключения к Telegram Bot API"
+                )
                 try:
                     bot_info = await bot.get_me()
                     bot_logger.info(f"Бот подключен: @{bot_info.username} ({bot_info.first_name})")
                     print(f"✅ Бот подключен: @{bot_info.username}")
+                    log_telegram_info(
+                        f"Бот подключен: @{bot_info.username}",
+                        f"Бот успешно подключен к Telegram API, имя: {bot_info.first_name}"
+                    )
                 except Exception as e:
                     bot_logger.error(f"Не удалось подключиться к Telegram API: {e}")
                     print(f"❌ Ошибка подключения к Telegram API: {e}")
                     print("   Проверьте правильность токена в файле .env")
+                    log_telegram_error(
+                        "Не удалось подключиться к Telegram API",
+                        error=e,
+                        description="Ошибка подключения к Telegram Bot API, проверьте токен"
+                    )
                     return
                 
                 storage = MemoryStorage()
@@ -146,14 +196,28 @@ def run_telegram_bot():
                 print("🤖 Telegram бот успешно запущен и готов принимать команды!")
                 print("   Отправьте /start боту для начала работы")
                 
+                log_telegram_info(
+                    "Бот запущен и готов к работе",
+                    "Telegram бот успешно запущен, polling начат"
+                )
+                
                 # Запуск polling с отключенной обработкой сигналов
                 # (так как мы не в главном потоке)
                 await dp.start_polling(bot, skip_updates=True, handle_signals=False)
             except asyncio.CancelledError:
                 bot_logger.info("Получен сигнал отмены для бота...")
+                log_telegram_info(
+                    "Получен сигнал отмены для бота",
+                    "Остановка polling бота"
+                )
                 raise
             except Exception as e:
                 bot_logger.error(f"Ошибка при работе бота: {e}")
+                log_telegram_error(
+                    f"Ошибка при работе бота: {str(e)}",
+                    error=e,
+                    description="Критическая ошибка в работе Telegram бота"
+                )
                 import traceback
                 traceback.print_exc()
                 print(f"❌ Критическая ошибка в боте: {e}")
@@ -226,6 +290,11 @@ def run_telegram_bot():
             
     except Exception as e:
         print(f"❌ Ошибка в Telegram боте: {e}")
+        log_backend_error(
+            f"Ошибка в Telegram боте: {str(e)}",
+            error=e,
+            description="Критическая ошибка при запуске Telegram бота"
+        )
         import traceback
         traceback.print_exc()
 
@@ -253,15 +322,28 @@ if __name__ == "__main__":
     init_db()
     print("✅ База данных готова\n")
     
+    log_backend_info(
+        "Инициализация базы данных",
+        "База данных инициализирована, все таблицы созданы"
+    )
+    
     # Запускаем парсер в отдельном потоке (daemon=True - не блокирует завершение)
     parser_thread = Thread(target=run_parser, daemon=True, name="ParserThread")
     parser_thread.start()
     print("✅ Парсер запущен в отдельном потоке")
+    log_backend_info(
+        "Парсер запущен в отдельном потоке",
+        "Поток парсера успешно запущен"
+    )
     
     # Запускаем Telegram бота в отдельном потоке (daemon=True - не блокирует завершение)
     telegram_thread = Thread(target=run_telegram_bot, daemon=True, name="TelegramBotThread")
     telegram_thread.start()
     print("✅ Telegram бот запущен в отдельном потоке")
+    log_backend_info(
+        "Telegram бот запущен в отдельном потоке",
+        "Поток Telegram бота успешно запущен"
+    )
     
     # Ждем немного для инициализации потоков
     print("⏳ Ожидание инициализации потоков...")

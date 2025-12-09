@@ -3,11 +3,14 @@
 ========================
 
 Логика работы:
-1. Проверяет время последнего обновления файлов
-2. Если прошло больше 15 минут - скачивает новые файлы
-3. Парсит Excel файлы (извлечение данных о студентах, оценках, датах)
-4. Сохраняет метаданные (время обновления) в БД
-5. Выводит подробно один предмет со всеми строками таблицы
+1. Скачивает файлы с Google Drive
+2. Парсит Excel файлы (извлечение данных о студентах, оценках, датах)
+3. Удаляет старые данные для обновляемых групп
+4. Сохраняет новые данные в БД
+5. Сохраняет информацию о парсинге в таблицу ParseLog
+6. Выводит сообщение о завершении парсинга в консоль
+7. Автоматически обновляется каждые 15 минут по реальному времени
+   (в 00, 15, 30, 45 минут каждого часа)
 
 Точка входа: main()
 """
@@ -15,6 +18,7 @@
 import os
 import sys
 import re
+import json
 import schedule
 import time
 from datetime import datetime, timedelta
@@ -22,60 +26,10 @@ from datetime import datetime, timedelta
 # Добавляем папку parsing в путь для импортов
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from database import init_db, get_db, UpdateLog, Group, Student, Subject, Grade
+from database import init_db, get_db, Group, Student, Subject, Grade, Topic, ParseLog
 from downloaders.google_drive import download_target_files
 from parsers.excel_parser import parse_excel_file
-from config import PARSE_INTERVAL_MINUTES
-
-
-def should_update_file(file_name):
-    """
-    Проверяет, нужно ли обновлять файл
-    
-    Логика:
-    - Если файл не обновлялся или прошло больше PARSE_INTERVAL_MINUTES минут
-    - Возвращает True если нужно обновить
-    """
-    db = get_db()
-    try:
-        log_entry = db.query(UpdateLog).filter(UpdateLog.file_name == file_name).first()
-        
-        if not log_entry:
-            # Файл еще не обновлялся
-            return True
-        
-        # Проверяем, прошло ли достаточно времени
-        time_diff = datetime.now() - log_entry.last_update_time
-        minutes_passed = time_diff.total_seconds() / 60
-        
-        return minutes_passed >= PARSE_INTERVAL_MINUTES
-    finally:
-        db.close()
-
-
-def save_update_log(file_name):
-    """Сохраняет время последнего обновления файла в БД"""
-    db = get_db()
-    try:
-        log_entry = db.query(UpdateLog).filter(UpdateLog.file_name == file_name).first()
-        
-        if log_entry:
-            # Обновляем время
-            log_entry.last_update_time = datetime.now()
-        else:
-            # Создаем новую запись
-            log_entry = UpdateLog(
-                file_name=file_name,
-                last_update_time=datetime.now()
-            )
-            db.add(log_entry)
-        
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        print(f"Ошибка при сохранении лога обновления: {e}")
-    finally:
-        db.close()
+from logger import log_parser_info, log_parser_error
 
 
 def save_to_database(parsed_data_per_file):
@@ -83,9 +37,9 @@ def save_to_database(parsed_data_per_file):
     Сохраняет распарсенные данные в БД
     
     Логика:
-    1. Для каждого файла получает данные
-    2. Создает/обновляет группы, студентов, предметы
-    3. Сохраняет оценки/пропуски
+    1. Собирает все группы, которые будут обновлены
+    2. Удаляет все старые данные (оценки, студентов, предметы) для этих групп
+    3. Сохраняет новые данные
     """
     db = get_db()
     try:
@@ -106,17 +60,19 @@ def save_to_database(parsed_data_per_file):
                 return False
             return True
         
+        # Сначала собираем все группы, которые будут обновлены
+        groups_to_update = set()
+        groups_data = {}
+        
         for file_name, all_data in parsed_data_per_file.items():
             if not all_data:
                 continue
             
             # Группируем данные по группам
-            groups_data = {}
             for item in all_data:
-                if not is_valid_student(item.get('fio')):
-                    continue
-                
                 group_name = item['group']
+                groups_to_update.add(group_name)
+                
                 if group_name not in groups_data:
                     groups_data[group_name] = {}
                 
@@ -124,212 +80,147 @@ def save_to_database(parsed_data_per_file):
                 if subject_name not in groups_data[group_name]:
                     groups_data[group_name][subject_name] = []
                 
-                groups_data[group_name][subject_name].append(item)
-            
-            # Сохраняем в БД
-            for group_name, subjects_data in groups_data.items():
-                # Создаем или получаем группу
-                group = db.query(Group).filter(Group.name == group_name).first()
-                if not group:
-                    group = Group(name=group_name)
-                    db.add(group)
-                    db.flush()
+                # Добавляем все элементы (включая темы, даже если нет ФИО)
+                # Для тем проверка is_valid_student не нужна
+                if item.get('type') == 'topic' or is_valid_student(item.get('fio')):
+                    groups_data[group_name][subject_name].append(item)
+        
+        # Удаляем все старые данные для обновляемых групп
+        for group_name in groups_to_update:
+            group = db.query(Group).filter(Group.name == group_name).first()
+            if group:
+                # Удаляем все оценки студентов этой группы
+                students_in_group = db.query(Student).filter(Student.group_id == group.id).all()
+                for student in students_in_group:
+                    db.query(Grade).filter(Grade.student_id == student.id).delete()
                 
-                # Обрабатываем предметы
-                for subject_name, items in subjects_data.items():
-                    # Создаем или получаем предмет
-                    subject = db.query(Subject).filter(
-                        Subject.name == subject_name,
-                        Subject.group_id == group.id
-                    ).first()
-                    if not subject:
-                        subject = Subject(name=subject_name, group_id=group.id)
-                        db.add(subject)
-                        db.flush()
-                    
-                    # Обрабатываем студентов и оценки
-                    students_map = {}  # ФИО -> Student объект
-                    for item in items:
-                        fio = item['fio']
-                        date = item['date']
-                        grade_value = item.get('grade', '')
-                        
-                        # Пропускаем некорректные даты
-                        if not date or (hasattr(date, 'year') and date.year < 2000):
-                            continue
-                        
-                        # Создаем или получаем студента
-                        if fio not in students_map:
-                            student = db.query(Student).filter(
-                                Student.fio == fio,
-                                Student.group_id == group.id
-                            ).first()
-                            if not student:
-                                student = Student(fio=fio, group_id=group.id)
-                                db.add(student)
-                                db.flush()
-                            students_map[fio] = student
-                        else:
-                            student = students_map[fio]
-                        
-                        # Проверяем, нет ли уже такой оценки
-                        existing_grade = db.query(Grade).filter(
-                            Grade.student_id == student.id,
-                            Grade.subject_id == subject.id,
-                            Grade.date == date
+                # Удаляем всех студентов группы
+                db.query(Student).filter(Student.group_id == group.id).delete()
+                
+                # Удаляем все темы предметов группы
+                subjects_in_group = db.query(Subject).filter(Subject.group_id == group.id).all()
+                for subject in subjects_in_group:
+                    db.query(Topic).filter(Topic.subject_id == subject.id).delete()
+                
+                # Удаляем все предметы группы
+                db.query(Subject).filter(Subject.group_id == group.id).delete()
+                
+                # Удаляем саму группу
+                db.delete(group)
+        
+        db.flush()
+        
+        # Сохраняем новые данные
+        for group_name, subjects_data in groups_data.items():
+            # Создаем новую группу
+            group = Group(name=group_name)
+            db.add(group)
+            db.flush()
+            
+            # Импортируем функцию нормализации ФИО
+            from parsers.excel_parser import normalize_fio_to_initials
+            
+            # Сначала собираем всех уникальных студентов для группы
+            # Это нужно сделать до обработки предметов, чтобы не создавать дубликаты
+            all_students_fio = set()
+            for subject_name, items in subjects_data.items():
+                for item in items:
+                    fio = item.get('fio', '')
+                    if fio:
+                        fio_normalized = normalize_fio_to_initials(str(fio).strip())
+                        if fio_normalized and len(fio_normalized) >= 3:
+                            all_students_fio.add(fio_normalized)
+            
+            # Создаем всех студентов группы один раз
+            students_map = {}  # ФИО -> Student объект
+            for fio_normalized in all_students_fio:
+                # Проверяем, не существует ли уже такой студент (на случай если БД не пересоздана)
+                existing_student = db.query(Student).filter(
+                    Student.fio == fio_normalized,
+                    Student.group_id == group.id
+                ).first()
+                
+                if existing_student:
+                    students_map[fio_normalized] = existing_student
+                else:
+                    student = Student(fio=fio_normalized, group_id=group.id)
+                    db.add(student)
+                    students_map[fio_normalized] = student
+            
+            db.flush()  # Сохраняем всех студентов перед созданием оценок
+            
+            # Теперь обрабатываем предметы и оценки
+            for subject_name, items in subjects_data.items():
+                # Создаем новый предмет
+                subject = Subject(name=subject_name, group_id=group.id)
+                db.add(subject)
+                db.flush()
+                
+                # Отделяем темы от оценок
+                topics_items = [item for item in items if item.get('type') == 'topic']
+                grades_items = [item for item in items if item.get('type') != 'topic' and item.get('fio')]
+                
+                # Сохраняем темы занятий
+                for topic_item in topics_items:
+                    topic_name = topic_item.get('topic', '').strip()
+                    if topic_name and len(topic_name) >= 3:
+                        # Проверяем, не существует ли уже такая тема
+                        existing_topic = db.query(Topic).filter(
+                            Topic.subject_id == subject.id,
+                            Topic.name == topic_name
                         ).first()
                         
-                        if not existing_grade:
-                            # Создаем новую оценку
-                            grade = Grade(
-                                student_id=student.id,
+                        if not existing_topic:
+                            topic = Topic(
                                 subject_id=subject.id,
-                                date=date,
-                                value=str(grade_value)
+                                name=topic_name,
+                                hours=topic_item.get('hours', 2),
+                                date=topic_item.get('date')
                             )
-                            db.add(grade)
+                            db.add(topic)
+                
+                db.flush()
+                
+                # Обрабатываем оценки (только те, что не являются темами)
+                for item in grades_items:
+                    fio = item.get('fio', '')
+                    date = item.get('date')
+                    grade_value = item.get('grade', '')
+                    
+                    # Пропускаем некорректные даты
+                    if not date or (hasattr(date, 'year') and date.year < 2000):
+                        continue
+                    
+                    # Нормализуем ФИО в формат "Фамилия И.О."
+                    fio_normalized = normalize_fio_to_initials(str(fio).strip())
+                    
+                    # Получаем студента из словаря (он уже должен быть создан)
+                    student = students_map.get(fio_normalized)
+                    if not student:
+                        continue  # Пропускаем если студент не найден (не должен случиться)
+                    
+                    # Проверяем, не существует ли уже такая оценка (на случай дубликатов)
+                    existing_grade = db.query(Grade).filter(
+                        Grade.student_id == student.id,
+                        Grade.subject_id == subject.id,
+                        Grade.date == date
+                    ).first()
+                    
+                    if not existing_grade:
+                        # Создаем оценку только если её еще нет
+                        grade = Grade(
+                            student_id=student.id,
+                            subject_id=subject.id,
+                            date=date,
+                            value=str(grade_value)
+                        )
+                        db.add(grade)
         
         db.commit()
     except Exception as e:
         db.rollback()
-        print(f"Ошибка при сохранении данных в БД: {e}")
-        import traceback
-        traceback.print_exc()
     finally:
         db.close()
-
-
-def print_detailed_subject(parsed_data_per_file):
-    """
-    Вывод подробной информации по одному предмету из каждого файла в виде таблицы
-    
-    Логика:
-    - Для каждого файла берет первый предмет
-    - Выводит все строки таблицы: ФИО | Дата | Оценка/Пропуск
-    - Добавляет статистику: количество пропусков, оценок, посещаемость
-    """
-    if not parsed_data_per_file:
-        return
-    
-    # Заголовки, которые не являются студентами
-    header_keywords = [
-        'месяц/число', 'фио обучающихся', 'фио', 'кол-во часов', 
-        'количество часов', 'часы', 'студент', 'обучающийся'
-    ]
-    
-    def is_valid_student(fio):
-        """Проверяет, является ли запись валидным студентом"""
-        if not fio:
-            return False
-        fio_lower = str(fio).lower().strip()
-        if any(keyword in fio_lower for keyword in header_keywords):
-            return False
-        if len(fio_lower) < 3:
-            return False
-        return True
-    
-    # Обрабатываем каждый файл
-    for file_name, all_data_from_file in parsed_data_per_file.items():
-        if not all_data_from_file:
-            continue
-        
-        # Группируем данные по группам и предметам
-        groups_data = {}
-        for item in all_data_from_file:
-            # Фильтруем заголовки
-            if not is_valid_student(item.get('fio')):
-                continue
-            
-            group_name = item['group']
-            subject_name = item['subject']
-            
-            if group_name not in groups_data:
-                groups_data[group_name] = {}
-            if subject_name not in groups_data[group_name]:
-                groups_data[group_name][subject_name] = []
-            
-            groups_data[group_name][subject_name].append(item)
-        
-        if not groups_data:
-            continue
-        
-        # Берем первый предмет из первой группы
-        first_group = list(groups_data.keys())[0]
-        subjects = groups_data[first_group]
-        if not subjects:
-            continue
-        
-        first_subject = list(subjects.keys())[0]
-        subject_data = subjects[first_subject]
-        
-        # Фильтруем записи с валидными датами и исключаем даты в оценках
-        valid_data = []
-        for item in subject_data:
-            date = item['date']
-            grade = str(item.get('grade', '')).strip()
-            
-            # Пропускаем записи, где оценка содержит дату (формат YYYY-MM-DD)
-            if re.match(r'^\d{4}-\d{2}-\d{2}', grade):
-                continue
-            
-            # Пропускаем записи, где оценка содержит дату с временем
-            if re.match(r'^\d{4}-\d{2}-\d{2}\s+\d{2}', grade):
-                continue
-            
-            # Проверяем валидность даты
-            if date and hasattr(date, 'year') and date.year >= 2000:
-                valid_data.append(item)
-            elif date and isinstance(date, str) and '202' in str(date):
-                valid_data.append(item)
-        
-        if not valid_data:
-            continue
-        
-        # Группируем по студентам для статистики
-        students_data = {}
-        for item in valid_data:
-            fio = item['fio']
-            if fio not in students_data:
-                students_data[fio] = {
-                    'records': [],
-                    'absences': 0,
-                    'grades': 0,
-                    'total': 0
-                }
-            
-            students_data[fio]['records'].append(item)
-            students_data[fio]['total'] += 1
-            
-            grade = str(item['grade']).lower()
-            if 'пропуск' in grade or grade in ['н', 'н/я', 'неявка']:
-                students_data[fio]['absences'] += 1
-            else:
-                students_data[fio]['grades'] += 1
-        
-        # Выводим только статистику по каждому студенту
-        print("\n" + "="*120)
-        print(f"ПРЕДМЕТ: {first_subject} | ГРУППА: {first_group} | ФАЙЛ: {file_name}")
-        print("="*120)
-        print(f"{'ФИО':<45} | {'Пропусков':<12} | {'Оценок':<12} | {'Всего':<12} | {'Посещаемость':<15}")
-        print("-"*120)
-        
-        for fio in sorted(students_data.keys()):
-            stats = students_data[fio]
-            total = stats['total']
-            absences = stats['absences']
-            grades = stats['grades']
-            
-            # Вычисляем посещаемость в процентах
-            if total > 0:
-                attendance = ((total - absences) / total) * 100
-                attendance_str = f"{attendance:.1f}%"
-            else:
-                attendance_str = "0%"
-            
-            fio_short = fio[:43]
-            print(f"{fio_short:<45} | {absences:<12} | {grades:<12} | {total:<12} | {attendance_str:<15}")
-        
-        print("="*120)
 
 
 def parse_and_save():
@@ -337,70 +228,176 @@ def parse_and_save():
     Основная функция парсинга и сохранения
     
     Логика работы:
-    1. Проверяет время последнего обновления
-    2. Если нужно - скачивает новые файлы
-    3. Парсит Excel файлы
-    4. Сохраняет метаданные в БД
-    5. Выводит подробные результаты
+    1. Скачивает новые файлы с Google Drive
+    2. Парсит Excel файлы
+    3. Удаляет старые данные и сохраняет новые в БД
+    4. Сохраняет информацию о парсинге в таблицу ParseLog
     """
-    downloaded_files = []
+    parse_start_time = datetime.now()
+    files_processed = 0
+    groups_updated_list = []
+    status = "success"
+    error_message = None
     
     try:
-        # Проверяем, нужно ли обновлять файлы
-        from config import TARGET_FILES
+        log_parser_info(
+            "Начало парсинга",
+            "Запуск процесса парсинга Excel файлов с Google Drive"
+        )
         
-        need_update = False
-        for file_name in TARGET_FILES:
-            if should_update_file(file_name):
-                need_update = True
-                break
+        # Скачиваем файлы
+        downloaded_files = download_target_files()
         
-        if not need_update:
-            # Используем существующие файлы из папки data/downloaded_files
-            # Путь относительно корня проекта
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            download_dir = os.path.join(base_dir, "data", "downloaded_files")
-            if os.path.exists(download_dir):
-                for file_name in TARGET_FILES:
-                    file_path = os.path.join(download_dir, file_name)
-                    if os.path.exists(file_path):
-                        downloaded_files.append(file_path)
-        else:
-            # Скачиваем файлы (сообщения о скачивании/удалении выводятся в download_target_files)
-            try:
-                downloaded_files = download_target_files()
-            except Exception as e:
-                return
-            
-            if not downloaded_files:
-                return
+        if not downloaded_files:
+            status = "error"
+            error_message = "Файлы не были скачаны"
+            log_parser_error(
+                "Файлы не были скачаны",
+                description="Не удалось скачать файлы с Google Drive"
+            )
+            return
+        
+        log_parser_info(
+            f"Скачано файлов: {len(downloaded_files)}",
+            f"Файлы: {', '.join([os.path.basename(f) for f in downloaded_files])}"
+        )
         
         # Парсим файлы
         parsed_data_per_file = {}
         for file_path in downloaded_files:
             try:
-                data = parse_excel_file(file_path)
                 file_name = os.path.basename(file_path)
+                log_parser_info(
+                    f"Парсинг файла: {file_name}",
+                    f"Обработка Excel файла"
+                )
+                
+                data = parse_excel_file(file_path)
                 parsed_data_per_file[file_name] = data
+                files_processed += 1
                 
-                # Сохраняем время обновления для каждого файла
-                save_update_log(file_name)
-                
+                log_parser_info(
+                    f"Файл обработан: {file_name}",
+                    f"Найдено записей: {len(data)}"
+                )
             except Exception as e:
-                pass
+                error_message = f"Ошибка при парсинге {file_path}: {str(e)}"
+                log_parser_error(
+                    f"Ошибка при парсинге {os.path.basename(file_path)}",
+                    error=e,
+                    description=f"Не удалось распарсить файл: {file_path}"
+                )
         
         # Сохраняем данные в БД
         if parsed_data_per_file:
+            # Получаем список обновленных групп
+            groups_updated_list = list(set(
+                item.get('group') 
+                for file_data in parsed_data_per_file.values() 
+                for item in file_data 
+                if item.get('group')
+            ))
+            
+            log_parser_info(
+                f"Сохранение данных в БД",
+                f"Обновление групп: {', '.join(groups_updated_list) if groups_updated_list else 'нет'}"
+            )
+            
             save_to_database(parsed_data_per_file)
+            
+            log_parser_info(
+                f"Данные сохранены в БД",
+                f"Обновлено групп: {len(groups_updated_list)}"
+            )
         
-        # Выводим только статистику по одному предмету из каждого файла
-        if parsed_data_per_file:
-            print_detailed_subject(parsed_data_per_file)
+        # Сохраняем информацию о парсинге в таблицу
+        db = get_db()
+        try:
+            parse_log = ParseLog(
+                parse_time=parse_start_time,
+                files_processed=files_processed,
+                groups_updated=json.dumps(groups_updated_list, ensure_ascii=False) if groups_updated_list else None,
+                status=status,
+                error_message=error_message
+            )
+            db.add(parse_log)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+        finally:
+            db.close()
+        
+        # Выводим сообщение о завершении парсинга
+        parse_end_time = datetime.now()
+        duration = (parse_end_time - parse_start_time).total_seconds()
+        groups_str = ", ".join(groups_updated_list) if groups_updated_list else "нет"
+        
+        log_parser_info(
+            "Парсинг завершен успешно",
+            f"Обработано файлов: {files_processed}, обновлено групп: {len(groups_updated_list)}, длительность: {duration:.2f} сек",
+            details={
+                "files_processed": files_processed,
+                "groups_count": len(groups_updated_list),
+                "groups": groups_updated_list,
+                "duration_seconds": duration
+            }
+        )
+        
+        print(f"\n✅ Парсинг завершен успешно!")
+        print(f"   📅 Время: {parse_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"   ⏱️  Длительность: {duration:.2f} сек")
+        print(f"   📁 Файлов обработано: {files_processed}")
+        print(f"   👥 Групп обновлено: {len(groups_updated_list)} ({groups_str})")
+        print(f"   💾 Данные сохранены в БД\n")
         
     except KeyboardInterrupt:
-        pass
+        status = "error"
+        error_message = "Парсинг прерван пользователем"
+        log_parser_error(
+            "Парсинг прерван пользователем",
+            description="Пользователь остановил процесс парсинга"
+        )
+        # Сохраняем информацию об ошибке
+        db = get_db()
+        try:
+            parse_log = ParseLog(
+                parse_time=parse_start_time,
+                files_processed=files_processed,
+                groups_updated=None,
+                status=status,
+                error_message=error_message
+            )
+            db.add(parse_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
     except Exception as e:
-        pass
+        status = "error"
+        error_message = str(e)
+        log_parser_error(
+            f"Ошибка при парсинге: {error_message}",
+            error=e,
+            description="Критическая ошибка в процессе парсинга"
+        )
+        # Сохраняем информацию об ошибке
+        db = get_db()
+        try:
+            parse_log = ParseLog(
+                parse_time=parse_start_time,
+                files_processed=files_processed,
+                groups_updated=None,
+                status=status,
+                error_message=error_message
+            )
+            db.add(parse_log)
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+        print(f"\n❌ Ошибка при парсинге: {error_message}\n")
 
 
 def main():
@@ -410,16 +407,21 @@ def main():
     Логика:
     1. Инициализация БД
     2. Первый запуск парсинга
-    3. Настройка автоматического обновления каждые 15 минут
+    3. Настройка автоматического обновления каждые 15 минут по реальному времени
+       (в 00, 15, 30, 45 минут каждого часа)
     4. Запуск планировщика
     """
     init_db()
     
-    # Выполняем первый парсинг сразу
+    # Выполняем первый парсинг сразу (без вывода)
     parse_and_save()
     
-    # Настраиваем автоматический запуск каждые 15 минут
-    schedule.every(PARSE_INTERVAL_MINUTES).minutes.do(parse_and_save)
+    # Настраиваем автоматический запуск каждые 15 минут по реальному времени
+    # Запуск в 00, 15, 30, 45 минут каждого часа
+    schedule.every().hour.at(":00").do(parse_and_save)
+    schedule.every().hour.at(":15").do(parse_and_save)
+    schedule.every().hour.at(":30").do(parse_and_save)
+    schedule.every().hour.at(":45").do(parse_and_save)
     
     # Запускаем планировщик
     while True:

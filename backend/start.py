@@ -163,7 +163,7 @@ def run_telegram_bot():
                 bot_logger.info("Проверка подключения к Telegram API...")
                 log_telegram_info(
                     "Проверка подключения к Telegram API",
-                    "Попытка подключения к Telegram Bot API"
+                    description="Попытка подключения к Telegram Bot API"
                 )
                 try:
                     bot_info = await bot.get_me()
@@ -171,7 +171,7 @@ def run_telegram_bot():
                     print(f"✅ Бот подключен: @{bot_info.username}")
                     log_telegram_info(
                         f"Бот подключен: @{bot_info.username}",
-                        f"Бот успешно подключен к Telegram API, имя: {bot_info.first_name}"
+                        description=f"Бот успешно подключен к Telegram API, имя: {bot_info.first_name}"
                     )
                 except Exception as e:
                     bot_logger.error(f"Не удалось подключиться к Telegram API: {e}")
@@ -198,7 +198,7 @@ def run_telegram_bot():
                 
                 log_telegram_info(
                     "Бот запущен и готов к работе",
-                    "Telegram бот успешно запущен, polling начат"
+                    description="Telegram бот успешно запущен, polling начат"
                 )
                 
                 # Запуск polling с отключенной обработкой сигналов
@@ -208,7 +208,7 @@ def run_telegram_bot():
                 bot_logger.info("Получен сигнал отмены для бота...")
                 log_telegram_info(
                     "Получен сигнал отмены для бота",
-                    "Остановка polling бота"
+                    description="Остановка polling бота"
                 )
                 raise
             except Exception as e:

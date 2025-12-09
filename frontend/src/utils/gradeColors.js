@@ -18,8 +18,22 @@ export const getGradeColor = (grade) => {
 
 export const formatDate = (dateString) => {
   const date = new Date(dateString)
-  return date.toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
+  // Форматируем дату с названием месяца: "15 янв" или "15 января"
+  const day = date.getDate()
+  const month = date.toLocaleDateString('ru-RU', { month: 'short' }) // "янв", "фев", и т.д.
+  return `${day} ${month}`
+}
+
+// Функция для группировки дат по месяцам (для заголовков таблицы)
+export const groupDatesByMonth = (dates) => {
+  const grouped = {}
+  dates.forEach(dateStr => {
+    const date = new Date(dateStr)
+    const monthKey = date.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long' })
+    if (!grouped[monthKey]) {
+      grouped[monthKey] = []
+    }
+    grouped[monthKey].push(dateStr)
   })
+  return grouped
 }

@@ -3,7 +3,7 @@ FastAPI приложение GreMuiv
 """
 from fastapi import FastAPI
 from backend.config import setup_cors
-from backend.routes import groups, subjects, students, grades, stats
+from backend.routes import groups, subjects, students, grades, stats, student
 from backend.utils.auth import init_auth
 
 # Создаем FastAPI приложение
@@ -42,6 +42,7 @@ app.include_router(subjects.router)
 app.include_router(students.router)
 app.include_router(grades.router)
 app.include_router(stats.router)
+app.include_router(student.router)
 
 
 @app.get("/")

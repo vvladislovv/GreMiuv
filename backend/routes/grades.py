@@ -84,7 +84,7 @@ async def get_grades(subject_id: int, group_id: Optional[int] = None, token: str
             )
         
         # Получаем всех студентов группы
-        students = db.query(Student).filter(
+        all_students = db.query(Student).filter(
             Student.group_id == group_id
         ).order_by(Student.fio).all()
         
@@ -101,20 +101,45 @@ async def get_grades(subject_id: int, group_id: Optional[int] = None, token: str
         dates = sorted(list(dates_set))
         dates_str = [date_to_str(d) for d in dates]
         
-        # Группируем оценки по студентам
+        # Группируем студентов по ФИО (убираем дубликаты)
+        # Используем словарь: ключ - ФИО, значение - первый ID и все ID для поиска оценок
+        students_by_fio = {}
+        for student in all_students:
+            fio_key = student.fio.strip()
+            if fio_key not in students_by_fio:
+                students_by_fio[fio_key] = {
+                    "id": student.id,  # Первый найденный ID
+                    "fio": student.fio,
+                    "all_ids": [student.id]  # Все ID этого студента
+                }
+            else:
+                # Добавляем ID к списку для поиска оценок
+                students_by_fio[fio_key]["all_ids"].append(student.id)
+        
+        # Группируем оценки по студентам (объединяем оценки для всех ID одного студента)
         students_data = []
-        for student in students:
+        for fio_key, student_info in students_by_fio.items():
             student_grades = {}
-            for grade in grades:
-                if grade.student_id == student.id:
-                    date_str = date_to_str(grade.date)
-                    student_grades[date_str] = grade.value
             
-            students_data.append({
-                "id": student.id,
-                "fio": student.fio,
-                "grades": student_grades
-            })
+            # Ищем оценки для всех ID этого студента
+            for grade in grades:
+                if grade.student_id in student_info["all_ids"]:
+                    date_str = date_to_str(grade.date)
+                    # Если уже есть оценка на эту дату, оставляем первую найденную
+                    if date_str not in student_grades:
+                        student_grades[date_str] = grade.value
+            
+            # Добавляем студента только если у него есть оценки
+            # (чтобы не возвращать студентов с пустыми grades: {})
+            if student_grades:
+                students_data.append({
+                    "id": student_info["id"],
+                    "fio": student_info["fio"],
+                    "grades": student_grades
+                })
+        
+        # Сортируем по ФИО
+        students_data.sort(key=lambda x: x["fio"])
         
         return {
             "dates": dates_str,

@@ -1,55 +1,95 @@
 .stat-card {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(102, 126, 234, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s ease;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 12px 24px rgba(102, 126, 234, 0.2), 0 0 0 1px rgba(102, 126, 234, 0.2);
+}
+
+.stat-card:hover::before {
+  transform: scaleX(1);
 }
 
 .stat-name {
-  font-weight: 600;
-  font-size: 1.1rem;
+  font-weight: 700;
+  font-size: 1.2rem;
   color: #333;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+  letter-spacing: -0.01em;
 }
 
 .stat-details {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .stat-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 8px 0;
+  transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+  padding-left: 8px;
+  padding-right: 8px;
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 8px;
 }
 
 .stat-label {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: #666;
+  font-weight: 500;
 }
 
 .stat-value {
-  font-weight: 600;
-  font-size: 1rem;
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  transition: all 0.2s ease;
 }
 
 .stat-value.grade {
+  background: rgba(76, 175, 80, 0.15);
   color: #4caf50;
 }
 
 .stat-value.absence {
+  background: rgba(244, 67, 54, 0.15);
   color: #f44336;
 }
 
 .stat-value.attendance {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+  padding: 6px 14px;
 }

@@ -3,10 +3,8 @@ import { statsApi } from '../services/api'
 import './Rating.css'
 
 export const Rating = ({ student }) => {
-  const [absencesRating, setAbsencesRating] = useState([])
   const [gradesRating, setGradesRating] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('absences') // 'absences' | 'grades'
 
   useEffect(() => {
     const fetchRating = async () => {
@@ -17,25 +15,14 @@ export const Rating = ({ student }) => {
 
       try {
         setLoading(true)
-        const [absences, grades] = await Promise.all([
-          statsApi.getAbsencesRating(student.group_id),
-          statsApi.getGradesRating(student.group_id)
-        ])
-        console.log('📊 Рейтинг по пропускам:', absences)
+        const grades = await statsApi.getGradesRating(student.group_id)
         console.log('📊 Рейтинг по оценкам:', grades)
-        
-        // Проверяем данные перед установкой
-        if (absences && absences.length > 0) {
-          console.log('📊 Пример данных по пропускам:', absences[0])
-          console.log('📊 Все позиции по пропускам:', absences.map(r => `${r.fio}: ${r.position} место, ${r.absences} пропусков`))
-        }
         
         if (grades && grades.length > 0) {
           console.log('📊 Пример данных по оценкам:', grades[0])
           console.log('📊 Все позиции по оценкам:', grades.map(r => `${r.fio}: ${r.position} место, средний ${r.average_grade}`))
         }
         
-        setAbsencesRating(absences || [])
         setGradesRating(grades || [])
       } catch (error) {
         console.error('❌ Ошибка загрузки рейтинга:', error)
@@ -52,12 +39,12 @@ export const Rating = ({ student }) => {
     return (
       <div className="rating-container">
         <div className="loading-spinner-small"></div>
-        <p>Загрузка рейтинга...</p>
+        <p className="loading-text">Загрузка рейтинга...</p>
       </div>
     )
   }
 
-  const currentRating = activeTab === 'absences' ? absencesRating : gradesRating
+  const currentRating = gradesRating
   const currentStudentIndex = currentRating.findIndex(r => r.id === student?.id)
 
   // Получаем медаль для первых трех мест
@@ -95,21 +82,6 @@ export const Rating = ({ student }) => {
         )}
       </div>
 
-      <div className="rating-tabs">
-        <button
-          className={`rating-tab ${activeTab === 'absences' ? 'active' : ''}`}
-          onClick={() => setActiveTab('absences')}
-        >
-          📉 По пропускам
-        </button>
-        <button
-          className={`rating-tab ${activeTab === 'grades' ? 'active' : ''}`}
-          onClick={() => setActiveTab('grades')}
-        >
-          📊 По оценкам
-        </button>
-      </div>
-
       <div className="rating-list">
         {currentRating.map((item, index) => {
           const isCurrentStudent = item.id === student?.id
@@ -140,37 +112,23 @@ export const Rating = ({ student }) => {
                   {isCurrentStudent && <span className="you-indicator"> (Вы)</span>}
                 </div>
                 <div className="rating-details">
-                  {activeTab === 'absences' ? (
-                    <div className="rating-stats">
-                      <div className="stat-detail">
-                        <span className="stat-icon">❌</span>
-                        <span className="stat-text">
-                          <strong>{item.absences}</strong> пропусков
-                        </span>
-                      </div>
-                      {item.absences === 0 && (
-                        <div className="perfect-badge">Идеальная посещаемость! ✨</div>
-                      )}
+                  <div className="rating-stats">
+                    <div className="stat-detail">
+                      <span className="stat-icon">⭐</span>
+                      <span className="stat-text">
+                        <span className="stat-label">Средний балл:</span> <strong>{item.average_grade.toFixed(2)}</strong>
+                      </span>
                     </div>
-                  ) : (
-                    <div className="rating-stats">
-                      <div className="stat-detail">
-                        <span className="stat-icon">⭐</span>
-                        <span className="stat-text">
-                          <span className="stat-label">Средний балл:</span> <strong>{item.average_grade.toFixed(2)}</strong>
-                        </span>
-                      </div>
-                      <div className="stat-detail">
-                        <span className="stat-icon">📝</span>
-                        <span className="stat-text">
-                          <span className="stat-label">Оценок:</span> <strong>{item.total_grades}</strong>
-                        </span>
-                      </div>
-                      {item.average_grade >= 4.5 && (
-                        <div className="excellent-badge">Отличник! 🎓</div>
-                      )}
+                    <div className="stat-detail">
+                      <span className="stat-icon">📝</span>
+                      <span className="stat-text">
+                        <span className="stat-label">Оценок:</span> <strong>{item.total_grades}</strong>
+                      </span>
                     </div>
-                  )}
+                    {item.average_grade >= 4.5 && (
+                      <div className="excellent-badge">Отличник! 🎓</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -58,3 +58,5 @@ def normalize_fio_to_initials(fio: str) -> str:
         return f"{surname} {first_name_initial}."
     else:
         return surname
+
+

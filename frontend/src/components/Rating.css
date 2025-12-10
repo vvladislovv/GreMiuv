@@ -208,7 +208,7 @@
 
 .position-label {
   font-size: 11px;
-  color: #333;
+  color: #000;
   text-transform: uppercase;
   margin-top: 4px;
   font-weight: 500;
@@ -224,7 +224,7 @@
 .rating-name {
   font-size: 17px;
   font-weight: 600;
-  color: #333;
+  color: #000;
   margin-bottom: 8px;
 }
 
@@ -251,7 +251,7 @@
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: #333;
+  color: #000;
   font-weight: 500;
 }
 
@@ -267,12 +267,12 @@
 }
 
 .stat-label {
-  color: #333;
+  color: #000;
   font-weight: 500;
 }
 
 .stat-text {
-  color: #333;
+  color: #000;
 }
 
 .stat-text strong {
@@ -335,4 +335,17 @@
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 20px auto;
+}
+
+.loading-text {
+  color: #000 !important;
+  font-weight: 600;
+  text-align: center;
+  margin-top: 12px;
+  font-size: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

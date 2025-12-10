@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import './BottomNavigation.css'
 
 export const BottomNavigation = ({ currentView, onNavigate }) => {
   const tabs = [
     { id: 'subjects', label: 'Главная', icon: '🏠', emoji: '🏠' },
+    { id: 'subject-ratings', label: 'Рейтинг предметов', icon: '⭐', emoji: '⭐' },
     { id: 'rating', label: 'Рейтинг', icon: '📊', emoji: '📊' },
     { id: 'calendar', label: 'Календарь', icon: '📅', emoji: '📅' },
     { id: 'profile', label: 'Профиль', icon: '👤', emoji: '👤' }
@@ -25,3 +25,5 @@ export const BottomNavigation = ({ currentView, onNavigate }) => {
     </nav>
   )
 }
+
+

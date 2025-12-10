@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import './Calendar.css'
+import { useEffect, useState } from 'react'
 import { studentApi } from '../services/api'
+import './Calendar.css'
 
 export const Calendar = ({ student, subjects, onBack }) => {
   const [selectedSubject, setSelectedSubject] = useState(null)
@@ -138,8 +138,12 @@ export const Calendar = ({ student, subjects, onBack }) => {
 
       {selectedSubject && (
         <div className="selected-subject-card">
-          <div className="subject-card-header">
-            <h3 className="subject-card-title">{selectedSubject.name}</h3>
+          <div className="selected-subject-header">
+            <div className="selected-subject-icon">📚</div>
+            <div className="selected-subject-info">
+              <h3 className="selected-subject-title">Выбранный предмет:</h3>
+              <p className="selected-subject-name">{selectedSubject.name}</p>
+            </div>
           </div>
           <div className="subject-card-stats">
             <div className="stat-badge">

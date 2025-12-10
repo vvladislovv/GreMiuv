@@ -100,114 +100,14 @@ async def get_stats(group_id: int, subject_id: int, token: str = Depends(verify_
         db.close()
 
 
-@router.get("/rating/absences", response_model=List[AbsenceRatingItem])
-async def get_absences_rating(
-    group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)"),
-    token: str = Depends(verify_token)
-):
-    """
-    Получить рейтинг группы по пропускам (по всем предметам)
-    
-    Args:
-        group_id: ID группы (обязательно, положительное число)
-    
-    Returns:
-        List[AbsenceRatingItem]: Рейтинг студентов по пропускам (от меньшего к большему):
-        - Позиции идут строго от 1 до N
-        - Студенты с одинаковым количеством пропусков получают одинаковую позицию
-        - Следующий студент получает позицию с учетом пропусков
-    
-    Raises:
-        HTTPException 404: Если группа не найдена
-        HTTPException 422: Если group_id невалиден (не положительное число)
-        HTTPException 500: При ошибке базы данных
-    """
-    db: Session = get_db()
-    try:
-        # Проверяем существование группы
-        group = db.query(Group).filter(Group.id == group_id).first()
-        if not group:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Группа с ID {group_id} не найдена"
-            )
-        
-        students = db.query(Student).filter(
-            Student.group_id == group_id
-        ).all()
-        
-        if not students:
-            return []
-        
-        # Группируем студентов по ФИО (убираем дубликаты)
-        students_by_fio = {}
-        for student in students:
-            fio_key = student.fio.strip()
-            if fio_key not in students_by_fio:
-                students_by_fio[fio_key] = {
-                    "id": student.id,
-                    "fio": student.fio,
-                    "all_ids": [student.id]
-                }
-            else:
-                students_by_fio[fio_key]["all_ids"].append(student.id)
-        
-        rating = []
-        for fio_key, student_info in students_by_fio.items():
-            # Получаем все оценки студента по всем предметам (для всех ID)
-            all_student_ids = student_info["all_ids"]
-            grades = db.query(Grade).filter(
-                Grade.student_id.in_(all_student_ids)
-            ).all()
-            
-            # Подсчитываем пропуски - считаем ВСЕ пропуски по всем предметам
-            # Каждый пропуск считается отдельно, даже если в один день по разным предметам
-            absences = 0
-            for g in grades:
-                value_str = str(g.value).lower().strip() if g.value else ''
-                if 'пропуск' in value_str or value_str in ['н', 'н/я', 'неявка', '*']:
-                    absences += 1
-            
-            rating.append({
-                "id": student_info["id"],
-                "fio": student_info["fio"],
-                "absences": absences
-            })
-        
-        # Сортируем по количеству пропусков (от меньшего к большему), при равенстве - по ФИО
-        rating.sort(key=lambda x: (x["absences"], x["fio"]))
-        
-        # Добавляем позицию в рейтинге с учетом одинаковых значений
-        # Если несколько студентов имеют одинаковое значение, они получают одинаковую позицию
-        # Следующий студент получает позицию = предыдущая позиция + количество студентов с этой позицией
-        for i, item in enumerate(rating):
-            if i == 0:
-                # Первый элемент всегда позиция 1
-                item["position"] = 1
-            else:
-                # Сравниваем с предыдущим элементом
-                prev_absences = rating[i-1]["absences"]
-                curr_absences = item["absences"]
-                
-                if prev_absences == curr_absences:
-                    # Если значение совпадает с предыдущим, позиция та же
-                    item["position"] = rating[i-1]["position"]
-                else:
-                    # Если значение отличается, нужно посчитать сколько студентов с предыдущей позицией
-                    prev_position = rating[i-1]["position"]
-                    # Считаем количество студентов с предыдущей позицией (включая всех с этой позицией)
-                    count_with_prev_position = sum(1 for r in rating[:i] if r["position"] == prev_position)
-                    # Новая позиция = предыдущая позиция + количество студентов с этой позицией
-                    item["position"] = prev_position + count_with_prev_position
-        
-        # Валидация через Pydantic
-        return [AbsenceRatingItem(**item) for item in rating]
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при получении рейтинга: {str(e)}")
-    finally:
-        db.close()
+# Временно отключено - эндпоинт не используется
+# @router.get("/rating/absences", response_model=List[AbsenceRatingItem])
+# async def get_absences_rating(
+#     group_id: int = Query(..., gt=0, description="ID группы (должен быть положительным числом)"),
+#     token: str = Depends(verify_token)
+# ):
+#     """Временно отключено"""
+#     pass
 
 
 @router.get("/rating/grades", response_model=List[GradeRatingItem])
@@ -262,13 +162,27 @@ async def get_grades_rating(
             else:
                 students_by_fio[fio_key]["all_ids"].append(student.id)
         
+        # Оптимизация: получаем все оценки для всех студентов одним запросом
+        all_student_ids = [s_id for s_data in students_by_fio.values() for s_id in s_data["all_ids"]]
+        all_grades = db.query(Grade).filter(
+            Grade.student_id.in_(all_student_ids)
+        ).all()
+        
+        # Группируем оценки по student_id для быстрого доступа
+        grades_by_student = {}
+        for grade in all_grades:
+            if grade.student_id not in grades_by_student:
+                grades_by_student[grade.student_id] = []
+            grades_by_student[grade.student_id].append(grade)
+        
         rating = []
         for fio_key, student_info in students_by_fio.items():
-            # Получаем все оценки студента по всем предметам (для всех ID)
+            # Получаем все оценки студента из кэша
             all_student_ids = student_info["all_ids"]
-            grades = db.query(Grade).filter(
-                Grade.student_id.in_(all_student_ids)
-            ).all()
+            grades = []
+            for student_id in all_student_ids:
+                if student_id in grades_by_student:
+                    grades.extend(grades_by_student[student_id])
             
             # Извлекаем только числовые оценки (игнорируем пропуски)
             # Используем set для уникальности (дата + предмет + значение)
@@ -303,12 +217,11 @@ async def get_grades_rating(
                 "total_grades": len(numeric_grades)
             })
         
-        # Сортируем по среднему баллу (от большего к меньшему), при равенстве - по ФИО
-        rating.sort(key=lambda x: (-x["average_grade"], x["fio"]))
+        # Сортируем по среднему баллу (от большего к меньшему), при равенстве - по количеству оценок (больше лучше), затем по ФИО
+        rating.sort(key=lambda x: (-x["average_grade"], -x["total_grades"], x["fio"]))
         
-        # Добавляем позицию в рейтинге с учетом одинаковых значений
-        # Если несколько студентов имеют одинаковый балл, они получают одинаковую позицию
-        # Следующий студент получает позицию = предыдущая позиция + количество студентов с этой позицией
+        # Добавляем позицию в рейтинге - НЕ МОЖЕТ БЫТЬ ОДИНАКОВЫХ МЕСТ
+        # Если балл одинаковый, выше тот, у кого больше оценок
         for i, item in enumerate(rating):
             if i == 0:
                 # Первый элемент всегда позиция 1
@@ -317,17 +230,16 @@ async def get_grades_rating(
                 # Сравниваем с предыдущим элементом (с учетом округления для float)
                 prev_grade = round(rating[i-1]["average_grade"], 2)
                 curr_grade = round(item["average_grade"], 2)
+                prev_grades_count = rating[i-1]["total_grades"]
+                curr_grades_count = item["total_grades"]
                 
-                if prev_grade == curr_grade:
-                    # Если значение совпадает с предыдущим, позиция та же
-                    item["position"] = rating[i-1]["position"]
+                # Если балл и количество оценок одинаковые - все равно разные места (по ФИО уже отсортировано)
+                if prev_grade == curr_grade and prev_grades_count == curr_grades_count:
+                    # Даже если все одинаково, даем следующее место
+                    item["position"] = i + 1
                 else:
-                    # Если значение отличается, нужно посчитать сколько студентов с предыдущей позицией
-                    prev_position = rating[i-1]["position"]
-                    # Считаем количество студентов с предыдущей позицией
-                    count_with_prev_position = sum(1 for r in rating[:i] if r["position"] == prev_position)
-                    # Новая позиция = предыдущая позиция + количество студентов с этой позицией
-                    item["position"] = prev_position + count_with_prev_position
+                    # Если отличается - следующее место
+                    item["position"] = i + 1
         
         # Валидация через Pydantic
         return [GradeRatingItem(**item) for item in rating]

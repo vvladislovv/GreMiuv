@@ -25,10 +25,7 @@ export const StatsCard = ({ stat }) => {
         </div>
         <div className="stat-item">
           <span className="stat-label">Посещаемость:</span>
-          <span
-            className="stat-value attendance"
-            style={{ color: getAttendanceColor(stat.attendance) }}
-          >
+          <span className="stat-value attendance">
             {stat.attendance}%
           </span>
         </div>

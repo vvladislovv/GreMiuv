@@ -97,3 +97,5 @@ def log_telegram_warning(message: str, user_id: int = None, description: str = N
     log_to_db('telegram', 'WARNING', message, description, details, user_id=user_id)
 
 
+
+

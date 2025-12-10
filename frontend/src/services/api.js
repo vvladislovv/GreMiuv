@@ -41,7 +41,7 @@ async function getToken() {
 // Создаем экземпляр axios с перехватчиком запросов
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000,
+  timeout: 60000, // Увеличиваем таймаут до 60 секунд для тяжелых запросов
 })
 
 // Перехватчик для добавления токена к каждому запросу
@@ -153,6 +153,9 @@ export const studentApi = {
   
   getStats: (fio) =>
     api.get('/student/stats', { params: { fio } }).then(res => res.data),
+  
+  getSubjectsRatings: (fio) =>
+    api.get('/student/subjects-ratings', { params: { fio } }).then(res => res.data),
   
   getFioByTelegramId: (initData) =>
     api.get('/student/fio-by-telegram-id', {

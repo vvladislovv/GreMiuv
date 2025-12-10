@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import { BottomNavigation } from './components/BottomNavigation'
 import { Calendar } from './components/Calendar'
 import { Header } from './components/Header'
-import { SubjectDetail } from './components/SubjectDetail'
-import { SubjectsList } from './components/SubjectsList'
-import { BottomNavigation } from './components/BottomNavigation'
 import { Rating } from './components/Rating'
+import { SubjectDetail } from './components/SubjectDetail'
+import { SubjectRatings } from './components/SubjectRatings'
+import { SubjectsList } from './components/SubjectsList'
 import { useStudentData } from './hooks/useStudentData'
 import { studentApi } from './services/api'
 
@@ -242,7 +243,7 @@ function App() {
     <div className="app">
       <Header 
         student={student} 
-        onBack={currentView !== 'subjects' && currentView !== 'rating' && currentView !== 'profile' ? handleBackToSubjects : null}
+        onBack={currentView !== 'subjects' && currentView !== 'rating' && currentView !== 'subject-ratings' && currentView !== 'profile' ? handleBackToSubjects : null}
       />
       
       <div className="app-content" style={{ paddingBottom: '80px' }}>
@@ -275,18 +276,51 @@ function App() {
           <Rating student={student} />
         )}
         
+        {currentView === 'subject-ratings' && (
+          <SubjectRatings student={student} />
+        )}
+        
         {currentView === 'profile' && (
           <div className="profile-view">
-            <h2>Профиль</h2>
+            <div className="profile-header">
+              <h2 className="profile-title">Профиль</h2>
+            </div>
             {student && (
-              <div className="profile-info">
-                <p><strong>ФИО:</strong> {student.fio}</p>
-                {student.group_name && <p><strong>Группа:</strong> {student.group_name}</p>}
+              <div className="profile-content">
+                <div className="profile-avatar-section">
+                  <div className="profile-avatar">
+                    {student.fio ? student.fio.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '👤'}
+                  </div>
+                  <div className="profile-main-info">
+                    <h3 className="profile-name">{student.fio}</h3>
+                    {student.group_name && (
+                      <p className="profile-group">Группа: {student.group_name}</p>
+                    )}
+                  </div>
+                </div>
                 {student.stats && (
-                  <div className="profile-stats">
-                    <p><strong>Всего предметов:</strong> {student.stats.total_subjects}</p>
-                    <p><strong>Всего занятий:</strong> {student.stats.total_lessons}</p>
-                    <p><strong>Средний балл:</strong> {student.stats.average_grade || 'Н/Д'}</p>
+                  <div className="profile-stats-grid">
+                    <div className="profile-stat-card">
+                      <div className="stat-card-icon">📚</div>
+                      <div className="stat-card-content">
+                        <div className="stat-card-value">{student.stats.total_subjects}</div>
+                        <div className="stat-card-label">Предметов</div>
+                      </div>
+                    </div>
+                    <div className="profile-stat-card">
+                      <div className="stat-card-icon">📝</div>
+                      <div className="stat-card-content">
+                        <div className="stat-card-value">{student.stats.total_lessons}</div>
+                        <div className="stat-card-label">Занятий</div>
+                      </div>
+                    </div>
+                    <div className="profile-stat-card">
+                      <div className="stat-card-icon">⭐</div>
+                      <div className="stat-card-content">
+                        <div className="stat-card-value">{student.stats.average_grade ? student.stats.average_grade.toFixed(2) : 'Н/Д'}</div>
+                        <div className="stat-card-label">Средний балл</div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

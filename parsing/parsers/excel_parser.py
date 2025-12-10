@@ -192,13 +192,28 @@ def parse_grade_value(value):
         return None
     
     # Пытаемся извлечь оценку (число)
+    # Сначала пробуем простое преобразование в число
+    try:
+        grade_num = float(value_str)
+        # Проверяем, что это разумная оценка (1-5)
+        if 1 <= grade_num <= 5:
+            return str(int(grade_num))
+        # Или оценка в формате 0-100
+        elif 0 <= grade_num <= 100:
+            return str(int(grade_num))
+    except ValueError:
+        pass
+    
+    # Если не получилось, пытаемся извлечь число из строки
     numbers = re.findall(r'\d+', value_str)
     if numbers:
         grade = numbers[0]
-        # Проверяем, что это разумная оценка (1-5 или 0-100)
+        grade_int = int(grade)
+        # Проверяем, что это разумная оценка (1-5)
         if grade in ['1', '2', '3', '4', '5']:
             return grade
-        elif len(grade) <= 3 and int(grade) <= 100:  # Может быть 0-100
+        # Или оценка в формате 0-100
+        elif 0 <= grade_int <= 100:
             return grade
     
     # Если это короткая строка (1-2 символа) и не дата - возвращаем как есть
@@ -347,8 +362,17 @@ def find_date_columns(header_row, worksheet, header_row_idx):
             if general_month_year:
                 break
     
-    # Парсим даты из заголовков
+    # Колонка AD имеет индекс 29 (A=0, B=1, ..., AD=29)
+    # Первая таблица (посещаемость) находится в колонках A-AD
+    # Вторая таблица (расписание/темы) начинается с колонки AE (индекс 30)
+    AD_COLUMN_INDEX = 29
+    
+    # Парсим даты из заголовков (только для первой таблицы, до колонки AD включительно)
     for idx, cell in enumerate(header_row):
+        # Ограничиваем парсинг первой таблицы колонками до AD включительно
+        if idx > AD_COLUMN_INDEX:
+            break
+            
         if not cell.value:
             continue
         
@@ -387,11 +411,20 @@ def parse_topics_table(worksheet, group_name, subject_name, start_row=1):
     - "Кол-во часов" 
     - "Наименование учебного занятия"
     
+    Фильтрация:
+    - Не парсит строки после колонки AE (индекс 30), где:
+      * "Кол-во часов" = 2 (или "2")
+      * В названии есть "Тема"
+      * В названии есть "4" (как часть темы, например "Тема 1.1. ... 4. ...")
+    
     Возвращает список тем занятий
     """
     topics_data = []
     max_row = worksheet.max_row
     max_col = worksheet.max_column
+    
+    # Колонка AE имеет индекс 30 (A=0, B=1, ..., AE=30)
+    AE_COLUMN_INDEX = 30
     
     # Ищем заголовок таблицы с темами
     header_row_idx = None
@@ -431,6 +464,14 @@ def parse_topics_table(worksheet, group_name, subject_name, start_row=1):
     if not header_row_idx or hours_col is None or topic_col is None:
         return topics_data
     
+    # Проверяем, что таблица тем находится в колонках AE и дальше
+    # (колонка AE = индекс 30)
+    # Таблица тем должна начинаться с колонки AE или позже
+    # Проверяем, что хотя бы одна из колонок (hours_col или topic_col) находится в AE+
+    if hours_col < AE_COLUMN_INDEX + 1 and topic_col < AE_COLUMN_INDEX + 1:
+        # Таблица тем не в колонках AE+, пропускаем
+        return topics_data
+    
     # Парсим строки с темами (начинаем со следующей строки после заголовка)
     for row_idx in range(header_row_idx + 1, max_row + 1):
         row = list(worksheet[row_idx])
@@ -461,6 +502,26 @@ def parse_topics_table(worksheet, group_name, subject_name, start_row=1):
                 hours_value = int(float(str(hours_cell.value).strip()))
             except:
                 hours_value = str(hours_cell.value).strip()
+        
+        # ФИЛЬТРАЦИЯ: Не парсим строки после колонки AE, где:
+        # - "Кол-во часов" = 2 (или "2")
+        # - В названии есть "Тема"
+        # - В названии есть "4" (как часть темы, например "Тема 1.1. ... 4. ...")
+        topic_lower = topic_name.lower()
+        has_tema = 'тема' in topic_lower
+        has_four = '4' in topic_name or '.4.' in topic_lower or ' 4.' in topic_lower
+        
+        # Проверяем, что hours = 2 (может быть int 2 или строка "2")
+        hours_is_two = False
+        if hours_value is not None:
+            if isinstance(hours_value, int) and hours_value == 2:
+                hours_is_two = True
+            elif isinstance(hours_value, str) and str(hours_value).strip() == "2":
+                hours_is_two = True
+        
+        # Если все условия выполнены - пропускаем эту строку
+        if hours_is_two and has_tema and has_four:
+            continue
         
         # Получаем дату проведения (если есть)
         date_value = None

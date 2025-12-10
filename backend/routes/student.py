@@ -161,6 +161,9 @@ async def get_student_subjects(
         
         # Для каждого предмета считаем статистику
         subjects_data = []
+        from datetime import date as date_class
+        current_date = date_class.today()
+        
         for subject in subjects:
             # Получаем все оценки студента по этому предмету
             grades = db.query(Grade).filter(
@@ -178,7 +181,39 @@ async def get_student_subjects(
             if total > 0:
                 attendance = round((grades_count / total) * 100, 1)
             
-            subjects_data.append({
+            # Ищем итоговую оценку на 10 число текущего месяца
+            final_grade = None
+            final_grade_date = None
+            for grade in grades:
+                if grade.date and grade.date.day == 10:
+                    # Проверяем, что это числовая оценка
+                    value_str = str(grade.value).strip() if grade.value else ''
+                    if value_str and value_str.lower() not in ['пропуск', 'н', 'н/я', 'неявка']:
+                        try:
+                            grade_num = float(value_str)
+                            if 2 <= grade_num <= 5:  # Валидная оценка
+                                final_grade = grade_num
+                                final_grade_date = grade.date
+                                break
+                        except ValueError:
+                            pass
+            
+            # Если не нашли на 10 число текущего месяца, ищем на 10 число любого месяца
+            if final_grade is None:
+                for grade in grades:
+                    if grade.date and grade.date.day == 10:
+                        value_str = str(grade.value).strip() if grade.value else ''
+                        if value_str and value_str.lower() not in ['пропуск', 'н', 'н/я', 'неявка']:
+                            try:
+                                grade_num = float(value_str)
+                                if 2 <= grade_num <= 5:
+                                    final_grade = grade_num
+                                    final_grade_date = grade.date
+                                    break
+                            except ValueError:
+                                pass
+            
+            subject_data = {
                 "id": int(subject.id),
                 "name": str(subject.name),
                 "group_id": int(subject.group_id),
@@ -188,7 +223,14 @@ async def get_student_subjects(
                     "absences": absences,
                     "attendance": attendance
                 }
-            })
+            }
+            
+            # Добавляем итоговую оценку если найдена
+            if final_grade is not None:
+                subject_data["final_grade"] = float(final_grade)
+                subject_data["final_grade_date"] = final_grade_date.isoformat() if final_grade_date else None
+            
+            subjects_data.append(subject_data)
         
         return subjects_data
     except HTTPException:
@@ -360,6 +402,242 @@ async def get_student_overall_stats(
                 "average_grade": avg_grade
             }
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении данных: {str(e)}")
+    finally:
+        db.close()
+
+
+@router.get("/subjects-ratings")
+async def get_subjects_ratings(
+    fio: str = Query(..., description="ФИО студента"),
+    token: str = Depends(verify_token)
+):
+    """
+    Получить рейтинги по предметам для студента
+    
+    Для каждого предмета возвращает:
+    - Рейтинг по оценкам (позиция студента по среднему баллу среди всех студентов группы)
+    - Рейтинг по посещаемости (позиция студента по проценту посещаемости среди всех студентов группы)
+    - Общий рейтинг среди всех предметов (комбинированный рейтинг)
+    
+    Returns:
+        List[dict]: Список предметов с рейтингами:
+        [
+            {
+                "id": 1,
+                "name": "Математика",
+                "ratings": {
+                    "by_grades": {
+                        "position": 5,
+                        "total_students": 25,
+                        "average_grade": 4.5
+                    },
+                    "by_attendance": {
+                        "position": 3,
+                        "total_students": 25,
+                        "attendance": 95.5
+                    },
+                    "overall": {
+                        "position": 4,
+                        "total_subjects": 10
+                    }
+                }
+            },
+            ...
+        ]
+    """
+    db: Session = get_db()
+    try:
+        # Находим студента
+        student = find_student_by_fio(db, fio)
+        
+        # Получаем все предметы группы студента
+        subjects = db.query(Subject).filter(
+            Subject.group_id == student.group_id
+        ).order_by(Subject.name).all()
+        
+        # Получаем всех студентов группы
+        all_students = db.query(Student).filter(
+            Student.group_id == student.group_id
+        ).all()
+        
+        # Группируем студентов по ФИО (убираем дубликаты)
+        students_by_fio = {}
+        for s in all_students:
+            fio_key = s.fio.strip()
+            if fio_key not in students_by_fio:
+                students_by_fio[fio_key] = {
+                    "id": s.id,
+                    "fio": s.fio,
+                    "all_ids": [s.id]
+                }
+            else:
+                students_by_fio[fio_key]["all_ids"].append(s.id)
+        
+        student_fio_key = student.fio.strip()
+        student_ids = students_by_fio.get(student_fio_key, {}).get("all_ids", [student.id])
+        
+        # Собираем данные для каждого предмета
+        subjects_ratings = []
+        
+        for subject in subjects:
+            # Получаем все оценки по этому предмету для всех студентов группы
+            all_grades = db.query(Grade).filter(
+                Grade.subject_id == subject.id,
+                Grade.student_id.in_([s_id for s_data in students_by_fio.values() for s_id in s_data["all_ids"]])
+            ).all()
+            
+            # Вычисляем статистику для каждого студента по этому предмету
+            student_stats = {}
+            
+            for fio_key, student_info in students_by_fio.items():
+                student_subject_grades = [g for g in all_grades if g.student_id in student_info["all_ids"]]
+                
+                total = len(student_subject_grades)
+                grades_count = sum(1 for g in student_subject_grades 
+                                 if g.value and g.value.strip() 
+                                 and g.value.lower() not in ['пропуск', 'н', 'н/я'])
+                absences = total - grades_count
+                
+                # Вычисляем посещаемость
+                attendance = 0.0
+                if total > 0:
+                    attendance = round((grades_count / total) * 100, 1)
+                
+                # Вычисляем средний балл (только числовые оценки)
+                numeric_grades = []
+                for g in student_subject_grades:
+                    if g.value and g.value.strip():
+                        try:
+                            grade_val = float(g.value)
+                            if 2 <= grade_val <= 5:
+                                numeric_grades.append(grade_val)
+                        except ValueError:
+                            pass
+                
+                avg_grade = round(sum(numeric_grades) / len(numeric_grades), 2) if numeric_grades else 0.0
+                
+                student_stats[fio_key] = {
+                    "id": student_info["id"],
+                    "fio": student_info["fio"],
+                    "average_grade": avg_grade,
+                    "attendance": attendance,
+                    "total_grades": len(numeric_grades)
+                }
+            
+            # Сортируем студентов по среднему баллу (от большего к меньшему)
+            grades_rating = sorted(
+                student_stats.values(),
+                key=lambda x: (-x["average_grade"], x["fio"])
+            )
+            
+            # Добавляем позиции в рейтинге по оценкам
+            for i, item in enumerate(grades_rating):
+                if i == 0:
+                    item["position"] = 1
+                else:
+                    prev_grade = round(grades_rating[i-1]["average_grade"], 2)
+                    curr_grade = round(item["average_grade"], 2)
+                    if prev_grade == curr_grade:
+                        item["position"] = grades_rating[i-1]["position"]
+                    else:
+                        prev_position = grades_rating[i-1]["position"]
+                        count_with_prev = sum(1 for r in grades_rating[:i] if r["position"] == prev_position)
+                        item["position"] = prev_position + count_with_prev
+            
+            # Сортируем студентов по посещаемости (от большего к меньшему)
+            attendance_rating = sorted(
+                student_stats.values(),
+                key=lambda x: (-x["attendance"], x["fio"])
+            )
+            
+            # Добавляем позиции в рейтинге по посещаемости
+            for i, item in enumerate(attendance_rating):
+                if i == 0:
+                    item["position"] = 1
+                else:
+                    prev_attendance = round(attendance_rating[i-1]["attendance"], 1)
+                    curr_attendance = round(item["attendance"], 1)
+                    if prev_attendance == curr_attendance:
+                        item["position"] = attendance_rating[i-1]["position"]
+                    else:
+                        prev_position = attendance_rating[i-1]["position"]
+                        count_with_prev = sum(1 for r in attendance_rating[:i] if r["position"] == prev_position)
+                        item["position"] = prev_position + count_with_prev
+            
+            # Находим позицию текущего студента (используем данные из student_stats по fio_key)
+            student_stats_data = student_stats.get(student_fio_key)
+            if student_stats_data:
+                # Находим в рейтингах по id (который мы сохранили в student_stats)
+                student_grades_data = next((s for s in grades_rating if s["id"] == student_stats_data["id"]), None)
+                student_attendance_data = next((s for s in attendance_rating if s["id"] == student_stats_data["id"]), None)
+            else:
+                student_grades_data = None
+                student_attendance_data = None
+            
+            subjects_ratings.append({
+                "id": int(subject.id),
+                "name": str(subject.name),
+                "ratings": {
+                    "by_grades": {
+                        "position": student_grades_data["position"] if student_grades_data else None,
+                        "total_students": len(grades_rating),
+                        "average_grade": student_grades_data["average_grade"] if student_grades_data else 0.0
+                    },
+                    "by_attendance": {
+                        "position": student_attendance_data["position"] if student_attendance_data else None,
+                        "total_students": len(attendance_rating),
+                        "attendance": student_attendance_data["attendance"] if student_attendance_data else 0.0
+                    }
+                }
+            })
+        
+        # Вычисляем общий рейтинг среди всех предметов
+        # Для этого вычисляем среднюю позицию по оценкам и посещаемости для каждого предмета
+        # и сортируем предметы по этой средней позиции
+        
+        # Сначала вычисляем среднюю позицию для каждого предмета
+        for subject_rating in subjects_ratings:
+            grades_pos = subject_rating["ratings"]["by_grades"]["position"]
+            attendance_pos = subject_rating["ratings"]["by_attendance"]["position"]
+            
+            # Если позиция None (нет данных), используем максимальное значение
+            if grades_pos is None:
+                grades_pos = subject_rating["ratings"]["by_grades"]["total_students"] + 1
+            if attendance_pos is None:
+                attendance_pos = subject_rating["ratings"]["by_attendance"]["total_students"] + 1
+            
+            # Средняя позиция (чем меньше, тем лучше)
+            avg_position = (grades_pos + attendance_pos) / 2
+            subject_rating["ratings"]["overall"] = {
+                "average_position": round(avg_position, 1)
+            }
+        
+        # Сортируем предметы по средней позиции (от меньшего к большему)
+        subjects_ratings.sort(key=lambda x: x["ratings"]["overall"]["average_position"])
+        
+        # Добавляем общий рейтинг (позицию среди всех предметов)
+        for i, subject_rating in enumerate(subjects_ratings):
+            if i == 0:
+                subject_rating["ratings"]["overall"]["position"] = 1
+            else:
+                prev_avg = round(subjects_ratings[i-1]["ratings"]["overall"]["average_position"], 1)
+                curr_avg = round(subject_rating["ratings"]["overall"]["average_position"], 1)
+                if prev_avg == curr_avg:
+                    subject_rating["ratings"]["overall"]["position"] = subjects_ratings[i-1]["ratings"]["overall"]["position"]
+                else:
+                    prev_position = subjects_ratings[i-1]["ratings"]["overall"]["position"]
+                    count_with_prev = sum(1 for r in subjects_ratings[:i] 
+                                         if r["ratings"]["overall"]["position"] == prev_position)
+                    subject_rating["ratings"]["overall"]["position"] = prev_position + count_with_prev
+            
+            subject_rating["ratings"]["overall"]["total_subjects"] = len(subjects_ratings)
+        
+        return subjects_ratings
+        
     except HTTPException:
         raise
     except Exception as e:

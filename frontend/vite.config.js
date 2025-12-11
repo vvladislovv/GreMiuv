@@ -7,7 +7,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 3000,
     allowedHosts: [
-      'agilely-remarkable-fieldfare.cloudpub.ru',
+      'horribly-fun-stint.cloudpub.ru',
       'localhost',
       '127.0.0.1'
     ],

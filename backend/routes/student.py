@@ -534,19 +534,9 @@ async def get_subjects_ratings(
                 key=lambda x: (-x["average_grade"], x["fio"])
             )
             
-            # Добавляем позиции в рейтинге по оценкам
+            # Добавляем позиции в рейтинге по оценкам - каждому студенту уникальное место (без повторений)
             for i, item in enumerate(grades_rating):
-                if i == 0:
-                    item["position"] = 1
-                else:
-                    prev_grade = round(grades_rating[i-1]["average_grade"], 2)
-                    curr_grade = round(item["average_grade"], 2)
-                    if prev_grade == curr_grade:
-                        item["position"] = grades_rating[i-1]["position"]
-                    else:
-                        prev_position = grades_rating[i-1]["position"]
-                        count_with_prev = sum(1 for r in grades_rating[:i] if r["position"] == prev_position)
-                        item["position"] = prev_position + count_with_prev
+                item["position"] = i + 1
             
             # Сортируем студентов по посещаемости (от большего к меньшему)
             attendance_rating = sorted(
@@ -554,19 +544,9 @@ async def get_subjects_ratings(
                 key=lambda x: (-x["attendance"], x["fio"])
             )
             
-            # Добавляем позиции в рейтинге по посещаемости
+            # Добавляем позиции в рейтинге по посещаемости - каждому студенту уникальное место (без повторений)
             for i, item in enumerate(attendance_rating):
-                if i == 0:
-                    item["position"] = 1
-                else:
-                    prev_attendance = round(attendance_rating[i-1]["attendance"], 1)
-                    curr_attendance = round(item["attendance"], 1)
-                    if prev_attendance == curr_attendance:
-                        item["position"] = attendance_rating[i-1]["position"]
-                    else:
-                        prev_position = attendance_rating[i-1]["position"]
-                        count_with_prev = sum(1 for r in attendance_rating[:i] if r["position"] == prev_position)
-                        item["position"] = prev_position + count_with_prev
+                item["position"] = i + 1
             
             # Находим позицию текущего студента (используем данные из student_stats по fio_key)
             student_stats_data = student_stats.get(student_fio_key)
@@ -619,21 +599,9 @@ async def get_subjects_ratings(
         # Сортируем предметы по средней позиции (от меньшего к большему)
         subjects_ratings.sort(key=lambda x: x["ratings"]["overall"]["average_position"])
         
-        # Добавляем общий рейтинг (позицию среди всех предметов)
+        # Добавляем общий рейтинг (позицию среди всех предметов) - каждому предмету уникальное место (без повторений)
         for i, subject_rating in enumerate(subjects_ratings):
-            if i == 0:
-                subject_rating["ratings"]["overall"]["position"] = 1
-            else:
-                prev_avg = round(subjects_ratings[i-1]["ratings"]["overall"]["average_position"], 1)
-                curr_avg = round(subject_rating["ratings"]["overall"]["average_position"], 1)
-                if prev_avg == curr_avg:
-                    subject_rating["ratings"]["overall"]["position"] = subjects_ratings[i-1]["ratings"]["overall"]["position"]
-                else:
-                    prev_position = subjects_ratings[i-1]["ratings"]["overall"]["position"]
-                    count_with_prev = sum(1 for r in subjects_ratings[:i] 
-                                         if r["ratings"]["overall"]["position"] == prev_position)
-                    subject_rating["ratings"]["overall"]["position"] = prev_position + count_with_prev
-            
+            subject_rating["ratings"]["overall"]["position"] = i + 1
             subject_rating["ratings"]["overall"]["total_subjects"] = len(subjects_ratings)
         
         return subjects_ratings
@@ -673,6 +641,81 @@ async def get_fio_by_telegram_id(
             "fio": user.full_name,
             "is_registered": True
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении данных: {str(e)}")
+    finally:
+        db.close()
+
+
+@router.get("/by-telegram")
+async def get_student_by_telegram(
+    telegram_user: dict = Depends(verify_telegram_user)
+):
+    """
+    Получить данные студента по Telegram initData
+    Объединяет данные из Telegram с данными студента из БД
+    
+    Returns:
+        dict: Объединенные данные:
+        - telegram: данные из Telegram (id, first_name, last_name, username, photo_url)
+        - fio: ФИО из telegram_users (если зарегистрирован)
+        - student: данные студента из БД (если найден по ФИО)
+        - is_registered: зарегистрирован ли пользователь
+    """
+    db: Session = get_db()
+    try:
+        # Извлекаем данные пользователя из Telegram
+        tg_user_data = telegram_user.get('user', {})
+        telegram_id = tg_user_data.get('id')
+        
+        if not telegram_id:
+            raise HTTPException(status_code=400, detail="telegram_id не найден в initData")
+        
+        # Получаем данные из Telegram
+        telegram_data = {
+            "id": telegram_id,
+            "first_name": tg_user_data.get('first_name'),
+            "last_name": tg_user_data.get('last_name'),
+            "username": tg_user_data.get('username'),
+            "photo_url": tg_user_data.get('photo_url'),  # Аватар из Telegram
+            "language_code": tg_user_data.get('language_code')
+        }
+        
+        # Ищем пользователя в telegram_users
+        user = db.query(TelegramUser).filter(
+            TelegramUser.telegram_id == telegram_id
+        ).first()
+        
+        result = {
+            "telegram": telegram_data,
+            "fio": None,
+            "student": None,
+            "is_registered": False
+        }
+        
+        # Если пользователь зарегистрирован, получаем ФИО
+        if user and user.is_registered and user.full_name:
+            result["fio"] = user.full_name
+            result["is_registered"] = True
+            
+            # Ищем студента в БД по ФИО
+            try:
+                student = find_student_by_fio(db, user.full_name)
+                group = db.query(Group).filter(Group.id == student.group_id).first()
+                
+                result["student"] = {
+                    "id": int(student.id),
+                    "fio": str(student.fio),
+                    "group_id": int(student.group_id),
+                    "group_name": str(group.name) if group else None
+                }
+            except HTTPException:
+                # Студент не найден в БД - это нормально, просто не возвращаем данные студента
+                pass
+        
+        return result
     except HTTPException:
         raise
     except Exception as e:

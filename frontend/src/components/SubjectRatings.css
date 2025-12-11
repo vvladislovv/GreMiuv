@@ -34,26 +34,27 @@
 }
 
 .stat-badge {
-  background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+  background: linear-gradient(135deg, #fff3e5 0%, #ffe6d0 100%);
   border-radius: 16px;
   padding: 12px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.25);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.18);
   transition: all 0.3s ease;
   min-width: 100px;
+  border: 1px solid rgba(255, 107, 53, 0.25);
 }
 
 .stat-badge:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.35);
+  box-shadow: 0 6px 16px rgba(255, 107, 53, 0.25);
 }
 
 .stat-badge-value {
   font-size: 24px;
   font-weight: 800;
-  color: white;
+  color: #1a1a1a;
   line-height: 1;
   margin-bottom: 4px;
 }
@@ -61,7 +62,7 @@
 .stat-badge-label {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: #4b5563;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -73,15 +74,16 @@
 }
 
 .subject-rating-card {
-  background: #2c2c2c;
+  background: #ffffff;
   border-radius: 20px;
   padding: 24px;
-  color: white;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  color: #1a1a1a;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
   animation: cardSlideIn 0.5s ease-out both;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .subject-rating-card::before {
@@ -92,42 +94,43 @@
   right: 0;
   height: 4px;
   background: linear-gradient(90deg, #ff6b35, #f7931e, #ff6b35);
-  opacity: 0;
+  opacity: 0.25;
   transition: opacity 0.3s ease;
 }
 
 .subject-rating-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
 .subject-rating-card:hover::before {
-  opacity: 1;
+  opacity: 0.6;
 }
 
 .subject-rating-card.top-three {
   border: 3px solid #ffd700;
-  box-shadow: 0 8px 24px rgba(255, 215, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(255, 215, 0, 0.2);
 }
 
 .subject-rating-card.top-three::before {
   background: linear-gradient(90deg, #ffd700, #ffed4e, #ffd700);
-  opacity: 1;
+  opacity: 0.8;
 }
 
 .subject-rating-card:nth-child(even) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f7f7fb 100%);
 }
 
 .subject-rating-card:nth-child(odd):not(.top-three) {
-  background: linear-gradient(135deg, #2c2c2c 0%, #3a3a3a 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
 }
 
 .subject-rating-card.disabled {
-  background: #e0e0e0 !important;
+  background: #f0f0f0 !important;
   opacity: 0.6;
   cursor: default;
   position: relative;
+  color: #666;
 }
 
 .subject-rating-card.disabled::before {
@@ -150,13 +153,13 @@
 }
 
 .subject-rating-card.disabled .rating-item {
-  background: rgba(0, 0, 0, 0.05) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
 .subject-rating-card.disabled .rating-item.overall {
-  background: rgba(0, 0, 0, 0.05) !important;
-  border-color: rgba(0, 0, 0, 0.1) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
 }
 
 @keyframes cardSlideIn {
@@ -172,14 +175,14 @@
 
 .subject-rating-header {
   margin-bottom: 20px;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.08);
   padding-bottom: 16px;
 }
 
 .subject-rating-title {
   font-size: 19px;
   font-weight: 700;
-  color: white;
+  color: #1a1a1a;
   margin: 0;
   line-height: 1.4;
   letter-spacing: -0.3px;
@@ -192,28 +195,28 @@
 }
 
 .rating-item {
-  background: rgba(255, 255, 255, 0.12);
+  background: #f7f7f9;
   border-radius: 14px;
   padding: 18px;
   transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(4px);
 }
 
 .rating-item:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: #f1f2f6;
   transform: translateX(4px);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .rating-item.overall {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 237, 78, 0.15) 100%);
+  background: linear-gradient(135deg, #fff8e1 0%, #fff3c4 100%);
   border: 2px solid rgba(255, 215, 0, 0.4);
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.15);
 }
 
 .rating-item.overall:hover {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.35) 0%, rgba(255, 237, 78, 0.25) 100%);
+  background: linear-gradient(135deg, #fff4c2 0%, #ffeaa0 100%);
   border-color: rgba(255, 215, 0, 0.6);
 }
 
@@ -238,7 +241,7 @@
 .rating-item-label {
   font-size: 16px;
   font-weight: 700;
-  color: white;
+  color: #1a1a1a;
   letter-spacing: -0.2px;
 }
 
@@ -247,10 +250,11 @@
   align-items: center;
   gap: 6px;
   font-weight: 800;
-  background: rgba(255, 255, 255, 0.15);
+  background: #eef0f7;
   padding: 8px 14px;
   border-radius: 12px;
   backdrop-filter: blur(10px);
+  color: #1a1a1a;
 }
 
 .position-medal {
@@ -264,15 +268,16 @@
   font-weight: 900;
   line-height: 1;
   letter-spacing: -1px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  color: #1a1a1a;
 }
 
 .position-label {
   font-size: 10px;
   font-weight: 700;
-  opacity: 0.9;
+  opacity: 0.8;
   letter-spacing: 1px;
   text-transform: uppercase;
+  color: #4b5563;
 }
 
 .rating-item-details {
@@ -290,14 +295,14 @@
 }
 
 .detail-label {
-  color: rgba(255, 255, 255, 0.85);
+  color: #4b5563;
   font-weight: 500;
   font-size: 13px;
 }
 
 .detail-value {
   font-weight: 700;
-  color: white;
+  color: #111827;
   font-size: 15px;
   letter-spacing: -0.2px;
 }
@@ -305,12 +310,11 @@
 .detail-value.highlight {
   font-size: 18px;
   font-weight: 800;
-  color: #ffd700;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  color: #c28a00;
 }
 
 .rating-item.overall .detail-value.highlight {
-  color: #ffed4e;
+  color: #c28a00;
 }
 
 .loading-spinner-small {
@@ -380,4 +384,5 @@
     font-size: 20px;
   }
 }
+
 

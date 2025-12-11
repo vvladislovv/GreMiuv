@@ -1,6 +1,7 @@
+import { memo, useMemo } from 'react'
 import './SubjectsList.css'
 
-export const SubjectsList = ({ subjects, student, onSubjectSelect, onShowCalendar }) => {
+export const SubjectsList = memo(({ subjects, student, onSubjectSelect, onShowCalendar }) => {
   // Проверяем, является ли предмет пустым (нет данных вообще)
   const isSubjectEmpty = (subject) => {
     const stats = subject.stats || {}
@@ -66,12 +67,21 @@ export const SubjectsList = ({ subjects, student, onSubjectSelect, onShowCalenda
     return { gradient, emoji }
   }
 
+  // Мемоизируем стили предметов для оптимизации
+  const subjectStyles = useMemo(() => {
+    const styles = new Map()
+    subjects.forEach(subject => {
+      styles.set(subject.id, getSubjectStyle(subject.name))
+    })
+    return styles
+  }, [subjects])
+
   return (
     <div className="subjects-container">
       <div className="subjects-grid">
         {subjects.map((subject, index) => {
           const isEmpty = isSubjectEmpty(subject)
-          const { gradient, emoji } = getSubjectStyle(subject.name)
+          const { gradient, emoji } = subjectStyles.get(subject.id) || getSubjectStyle(subject.name)
           
           // Определяем цвет фона на основе итоговой оценки (если есть)
           let cardBackground = gradient
@@ -128,4 +138,6 @@ export const SubjectsList = ({ subjects, student, onSubjectSelect, onShowCalenda
 
     </div>
   )
-}
+})
+
+SubjectsList.displayName = 'SubjectsList'

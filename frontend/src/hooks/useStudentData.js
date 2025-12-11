@@ -6,41 +6,81 @@ export const useStudentData = (fio, initData) => {
   const [subjects, setSubjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [telegramData, setTelegramData] = useState(null)
 
   useEffect(() => {
-    console.log('🔄 useStudentData: ФИО =', fio, 'тип:', typeof fio)
+    console.log('🔄 useStudentData: ФИО =', fio, 'тип:', typeof fio, 'initData:', !!initData)
     
-    // Если ФИО не указано, устанавливаем состояние загрузки, но не ошибку
-    // Ошибка будет показана только если ФИО действительно не найдено после всех попыток
-    if (!fio) {
-      console.log('⚠️ useStudentData: ФИО не указано, ожидаем...')
-      setLoading(true)
-      setError(null)
-      setStudent(null)
-      setSubjects([])
-      return
-    }
-    
-    // Если ФИО есть, но это пустая строка, показываем ошибку
-    if (fio.trim() === '') {
-      console.log('⚠️ useStudentData: ФИО пустое')
-      setError('ФИО не указано')
-      setLoading(false)
-      return
-    }
-
     const fetchData = async () => {
+      let telegramFio = fio
+      let finalFio = fio
+      
       try {
-        console.log('📡 useStudentData: Начинаем загрузку данных для ФИО:', fio)
         setLoading(true)
         setError(null)
 
+        // Если есть initData, сначала получаем данные из Telegram
+        if (initData && initData.trim() !== '') {
+          try {
+            console.log('📡 Получаем данные из Telegram...')
+            const telegramResponse = await studentApi.getByTelegram(initData)
+            console.log('✅ Данные из Telegram получены:', telegramResponse)
+            
+            setTelegramData(telegramResponse.telegram)
+            
+            // Используем ФИО из Telegram, если оно есть (приоритет над переданным fio)
+            if (telegramResponse.fio) {
+              telegramFio = telegramResponse.fio
+              finalFio = telegramResponse.fio
+              console.log('✅ Используем ФИО из Telegram:', finalFio)
+              
+              // Если студент найден в БД, загружаем его данные
+              if (telegramResponse.student) {
+                const [subjectsData, statsData] = await Promise.all([
+                  studentApi.getSubjects(finalFio),
+                  studentApi.getStats(finalFio)
+                ])
+                
+                setStudent({
+                  ...telegramResponse.student,
+                  stats: statsData.stats,
+                  telegram: telegramResponse.telegram
+                })
+                setSubjects(subjectsData)
+                setLoading(false)
+                return
+              }
+            }
+          } catch (tgErr) {
+            console.warn('⚠️ Ошибка при получении данных из Telegram:', tgErr)
+            // Продолжаем работу без данных Telegram
+          }
+        }
+        
+        // Если ФИО не указано (ни из параметра, ни из Telegram), ждем
+        if (!finalFio) {
+          console.log('⚠️ useStudentData: ФИО не указано, ожидаем загрузку из Telegram...')
+          setLoading(true)
+          setError(null)
+          setStudent(null)
+          setSubjects([])
+          return
+        }
+        
+        // Если ФИО есть, но это пустая строка, показываем ошибку
+        if (finalFio.trim() === '') {
+          console.log('⚠️ useStudentData: ФИО пустое')
+          setError('ФИО не указано')
+          setLoading(false)
+          return
+        }
+
         // Получаем данные студента и предметы параллельно
-        console.log('📡 Отправляем запросы на бэкенд...')
+        console.log('📡 Отправляем запросы на бэкенд для ФИО:', finalFio)
         const [studentData, subjectsData, statsData] = await Promise.all([
-          studentApi.getByFio(fio),
-          studentApi.getSubjects(fio),
-          studentApi.getStats(fio)
+          studentApi.getByFio(finalFio),
+          studentApi.getSubjects(finalFio),
+          studentApi.getStats(finalFio)
         ])
         
         console.log('✅ useStudentData: Данные получены:', {
@@ -49,10 +89,11 @@ export const useStudentData = (fio, initData) => {
           stats: statsData
         })
 
-        // Объединяем данные студента со статистикой
+        // Объединяем данные студента со статистикой и данными Telegram
         setStudent({
           ...studentData,
-          stats: statsData.stats
+          stats: statsData.stats,
+          telegram: telegramData
         })
         setSubjects(subjectsData)
       } catch (err) {
@@ -75,7 +116,7 @@ export const useStudentData = (fio, initData) => {
         setError(errorMessage)
         console.error('❌ useStudentData: Ошибка загрузки данных студента:', {
           error: err,
-          fio: fio,
+          fio: finalFio || telegramFio || fio,
           response: err.response?.data,
           status: err.response?.status,
           message: err.message,
@@ -87,7 +128,7 @@ export const useStudentData = (fio, initData) => {
     }
 
     fetchData()
-  }, [fio])
+  }, [fio, initData])
 
   return { student, subjects, loading, error }
 }

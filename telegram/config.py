@@ -26,5 +26,5 @@ BOT_DESCRIPTION = """
 # Если не указан или невалидный, кнопка будет работать как обычная callback
 MINI_APP_URL = os.getenv(
     "MINI_APP_URL", 
-    "https://agilely-remarkable-fieldfare.cloudpub.ru/"
+    "https://horribly-fun-stint.cloudpub.ru/"
 )

@@ -2,6 +2,15 @@
   padding: 20px 16px;
   animation: fadeIn 0.3s ease-in;
   padding-bottom: 100px; /* Отступ для нижней навигации */
+  /* Изоляция пространства для mini app */
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  contain: layout style paint;
+  /* Оптимизация для мини-приложений */
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
 }
 
 .rating-header {
@@ -23,8 +32,39 @@
 
 .rating-empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: 60px 20px;
   color: #333;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.empty-icon {
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.5;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+}
+
+.empty-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 12px 0;
+}
+
+.empty-description {
+  font-size: 16px;
+  color: #666;
+  line-height: 1.6;
+  margin: 0;
 }
 
 .rating-tabs {

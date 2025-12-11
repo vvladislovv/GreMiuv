@@ -16,6 +16,14 @@
 
 .app-content {
   animation: fadeIn 0.3s ease-in;
+  /* Изоляция пространства для mini app */
+  position: relative;
+  width: 100%;
+  min-height: calc(100vh - 80px);
+  overflow-x: hidden;
+  /* Оптимизация для мини-приложений */
+  -webkit-overflow-scrolling: touch;
+  contain: layout style paint;
 }
 
 @keyframes fadeIn {
@@ -36,6 +44,15 @@
   background: linear-gradient(to bottom, #f8f9fa 0%, #ffffff 100%);
   min-height: calc(100vh - 200px);
   animation: slideUp 0.3s ease-out;
+  /* Изоляция пространства для каждой вкладки */
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  contain: layout style paint;
+  /* Оптимизация для мини-приложений */
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
 }
 
 @keyframes slideUp {
@@ -108,6 +125,13 @@
   position: relative;
   z-index: 1;
   transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .profile-avatar:hover {

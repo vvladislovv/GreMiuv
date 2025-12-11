@@ -283,95 +283,52 @@ def find_month_in_cell(cell_value):
 
 def find_date_columns(header_row, worksheet, header_row_idx):
     """
-    Поиск колонок с датами с учетом месяцев на строке 5 (или около заголовка)
+    Поиск колонок с датами с учетом месяцев и чисел
     
     Логика:
-    1. Ищет строку с месяцами (обычно строка 5 или около заголовка)
-    2. Для каждой колонки определяет месяц из соответствующей ячейки строки с месяцами
-    3. Использует месяц для построения полных дат из чисел (дней)
-    4. Парсит весь документ, включая продолжение
+    1. Месяцы находятся на строке выше заголовка (header_row_idx - 1)
+    2. Числа находятся на той же строке, что и заголовок (header_row_idx)
+    3. Для каждой колонки определяет месяц из строки выше
+    4. Использует месяц + число для построения полной даты
+    5. Колонки с датами: от C (индекс 2) до AC (индекс 28)
     
     Возвращает список кортежей: (индекс_колонки, дата)
     """
     date_columns = []
     current_year = datetime.now().year
     
-    # Ищем строку с месяцами - проверяем строки выше заголовка (особенно строку 5)
-    # Обычно месяц указан на строке 5 или около заголовка
-    month_row_idx = None
+    # Строка с месяцами находится на 1 строку выше заголовка
+    month_row_idx = header_row_idx - 1
     month_row = None
     
-    # Сначала проверяем конкретные строки: 5, 4, 3, 2, 1 (если они выше заголовка)
-    check_rows = [5, 4, 3, 2, 1]
-    for check_row_num in check_rows:
-        if check_row_num < header_row_idx:
-            check_row = list(worksheet[check_row_num])
-            # Проверяем, есть ли в этой строке названия месяцев
-            for cell in check_row:
-                if cell.value and find_month_in_cell(cell.value):
-                    month_row_idx = check_row_num
-                    month_row = check_row
-                    break
-            if month_row:
-                break
+    if month_row_idx >= 1:
+        month_row = list(worksheet[month_row_idx])
     
-    # Если не нашли на конкретных строках, ищем в диапазоне выше заголовка (до 15 строк)
-    if not month_row:
-        for row_offset in range(1, min(16, header_row_idx + 1)):
-            check_row_idx = header_row_idx - row_offset
-            if check_row_idx < 1:
-                break
-            
-            check_row = list(worksheet[check_row_idx])
-            # Проверяем, есть ли в этой строке названия месяцев
-            for cell in check_row:
-                if cell.value and find_month_in_cell(cell.value):
-                    month_row_idx = check_row_idx
-                    month_row = check_row
-                    break
-            if month_row:
-                break
-    
-    # Если нашли строку с месяцами, используем её для определения месяца каждой колонки
-    # Иначе используем общий месяц (если найдем)
+    # Для каждой колонки определяем месяц из строки выше
     column_months = {}  # индекс_колонки -> (month, year)
-    general_month_year = None
+    last_month_year = None  # Последний найденный месяц (для распространения на следующие колонки)
     
     if month_row:
-        # Для каждой колонки определяем месяц из соответствующей ячейки
         for idx, cell in enumerate(month_row):
             month_year = find_month_in_cell(cell.value)
             if month_year:
                 column_months[idx] = month_year
-                # Также сохраняем как общий месяц (на случай если не все колонки имеют месяц)
-                if general_month_year is None:
-                    general_month_year = month_year
-    else:
-        # Если не нашли строку с месяцами, ищем общий месяц в любом месте
-        for row_offset in range(1, min(16, header_row_idx + 1)):
-            check_row_idx = header_row_idx - row_offset
-            if check_row_idx < 1:
-                break
-            
-            check_row = list(worksheet[check_row_idx])
-            for cell in check_row:
-                month_year = find_month_in_cell(cell.value)
-                if month_year:
-                    general_month_year = month_year
-                    break
-            if general_month_year:
-                break
+                last_month_year = month_year
+            elif last_month_year:
+                # Если месяц не найден, но есть последний найденный месяц,
+                # распространяем его на эту колонку (месяцы могут быть объединены)
+                column_months[idx] = last_month_year
     
-    # Колонка AD имеет индекс 29 (A=0, B=1, ..., AD=29)
-    # Первая таблица (посещаемость) находится в колонках A-AD
-    # Вторая таблица (расписание/темы) начинается с колонки AE (индекс 30)
-    AD_COLUMN_INDEX = 29
+    # Колонка C имеет индекс 2 (A=0, B=1, C=2)
+    # Колонка AC имеет индекс 28 (A=0, ..., Z=25, AA=26, AB=27, AC=28)
+    C_COLUMN_INDEX = 2
+    AC_COLUMN_INDEX = 28
     
-    # Парсим даты из заголовков (только для первой таблицы, до колонки AD включительно)
+    # Парсим даты из заголовков (только колонки от C до AC)
     for idx, cell in enumerate(header_row):
-        # Ограничиваем парсинг первой таблицы колонками до AD включительно
-        if idx > AD_COLUMN_INDEX:
-            break
+        # Ограничиваем парсинг колонками от C до AC включительно
+        if idx < C_COLUMN_INDEX or idx > AC_COLUMN_INDEX:
+            continue
             
         if not cell.value:
             continue
@@ -383,7 +340,7 @@ def find_date_columns(header_row, worksheet, header_row_idx):
             day = int(cell_value)
             
             # Определяем месяц для этой колонки
-            month_year = column_months.get(idx, general_month_year)
+            month_year = column_months.get(idx)
             
             if month_year:
                 month, year = month_year
@@ -392,9 +349,10 @@ def find_date_columns(header_row, worksheet, header_row_idx):
                     date_columns.append((idx, parsed_date))
                     continue
                 except ValueError:
+                    # Если дата невалидна (например, 31 февраля), пропускаем
                     pass
         
-        # Пытаемся распарсить как полную дату
+        # Пытаемся распарсить как полную дату (на случай если формат другой)
         parsed_date = parse_date(cell_value)
         if parsed_date:
             date_columns.append((idx, parsed_date))
@@ -675,6 +633,62 @@ def parse_sheet(worksheet, group_name, subject_name):
     return data
 
 
+def calculate_subject_statistics(sheet_data):
+    """
+    Вычисляет статистику по предмету из распарсенных данных
+    
+    Возвращает словарь с:
+    - total_classes: общее количество занятий (уникальных дат)
+    - total: общее количество записей (оценок + пропусков)
+    - grades_count: количество оценок (не пропусков)
+    - absences_count: количество пропусков
+    - attendance_percent: процент посещаемости (0-100)
+    """
+    total = 0
+    grades_count = 0
+    absences_count = 0
+    unique_dates = set()
+    
+    # Фильтруем только записи с оценками/пропусками (не темы и не статистику)
+    grade_records = [item for item in sheet_data 
+                     if item.get('type') not in ['topic', 'statistics'] 
+                     and item.get('grade')]
+    
+    for item in grade_records:
+        grade_value = item.get('grade', '')
+        date = item.get('date')
+        
+        # Добавляем дату в набор уникальных дат
+        if date:
+            unique_dates.add(date)
+        
+        if grade_value:
+            total += 1
+            if grade_value.lower() in ['пропуск', 'н', 'н/я', 'неявка', 'нб', 'н/б'] or grade_value == '*':
+                absences_count += 1
+            else:
+                grades_count += 1
+    
+    # Общее количество занятий = количество уникальных дат
+    total_classes = len(unique_dates)
+    
+    # Вычисляем процент посещаемости
+    # Посещаемость = (количество оценок / общее количество) * 100
+    # Если нет записей, посещаемость = 0%
+    if total > 0:
+        attendance_percent = round((grades_count / total) * 100, 1)
+    else:
+        attendance_percent = 0.0
+    
+    return {
+        'total_classes': total_classes,
+        'total': total,
+        'grades_count': grades_count,
+        'absences_count': absences_count,
+        'attendance_percent': attendance_percent
+    }
+
+
 def parse_excel_file(file_path):
     """
     Парсинг Excel файла
@@ -682,10 +696,11 @@ def parse_excel_file(file_path):
     Логика:
     1. Загружает файл
     2. Извлекает название группы из имени файла
-    3. Пропускает первые SKIP_FIRST_SHEETS вкладок
-    4. Парсит вкладки до STOP_SHEET_NAME
-    5. Для каждой вкладки вызывает parse_sheet()
-    6. Возвращает объединенные данные
+    3. Находит первую вкладку, начинающуюся с "ОГСЭ" или "ОГЭ"
+    4. Парсит все вкладки до тех, которые начинаются с "УП"
+    5. Для каждой вкладки вызывает parse_sheet() (даже если там нет данных)
+    6. Вычисляет статистику для каждого предмета
+    7. Возвращает объединенные данные с информацией о статистике
     """
     
     try:
@@ -700,21 +715,38 @@ def parse_excel_file(file_path):
         
         all_data = []
         
-        # Пропускаем первые 3 вкладки
-        start_idx = min(SKIP_FIRST_SHEETS, len(sheet_names))
-        end_idx = len(sheet_names)
-        
-        # Находим индекс вкладки "УП технической разработки"
+        # Находим первую вкладку, начинающуюся с "ОГСЭ" или "ОГЭ"
+        start_idx = None
         for idx, sheet_name in enumerate(sheet_names):
-            if STOP_SHEET_NAME.lower() in sheet_name.lower():
+            sheet_name_upper = sheet_name.upper().strip()
+            if sheet_name_upper.startswith('ОГСЭ') or sheet_name_upper.startswith('ОГЭ'):
+                start_idx = idx
+                break
+        
+        # Если не нашли вкладку с ОГСЭ/ОГЭ, используем старую логику (пропускаем первые 3)
+        if start_idx is None:
+            start_idx = min(SKIP_FIRST_SHEETS, len(sheet_names))
+        
+        # Находим индекс первой вкладки, начинающейся с "УП"
+        end_idx = len(sheet_names)
+        for idx, sheet_name in enumerate(sheet_names):
+            sheet_name_upper = sheet_name.upper().strip()
+            if sheet_name_upper.startswith('УП'):
                 end_idx = idx
                 break
         
-        if start_idx >= end_idx:
+        # Если не нашли вкладку с УП, используем старую логику
+        if end_idx == len(sheet_names):
+            for idx, sheet_name in enumerate(sheet_names):
+                if STOP_SHEET_NAME.lower() in sheet_name.lower():
+                    end_idx = idx
+                    break
+        
+        if start_idx is None or start_idx >= end_idx:
             workbook.close()
             return all_data
         
-        # Парсим нужные вкладки (без вывода информации о парсинге)
+        # Парсим все вкладки от ОГСЭ до УП (даже если там нет данных)
         for idx in range(start_idx, end_idx):
             sheet_name = sheet_names[idx]
             worksheet = workbook[sheet_name]
@@ -722,7 +754,26 @@ def parse_excel_file(file_path):
             # Извлекаем название предмета из названия вкладки
             subject_name = sheet_name
             
+            # Парсим вкладку (даже если там нет данных, parse_sheet вернет пустой список)
             sheet_data = parse_sheet(worksheet, group_name, subject_name)
+            
+            # Вычисляем статистику для этого предмета
+            statistics = calculate_subject_statistics(sheet_data)
+            
+            # Добавляем статистику к данным предмета
+            # Сохраняем статистику как специальную запись типа 'statistics'
+            all_data.append({
+                'group': group_name,
+                'subject': subject_name,
+                'type': 'statistics',
+                'total_classes': statistics['total_classes'],
+                'total': statistics['total'],
+                'grades_count': statistics['grades_count'],
+                'absences_count': statistics['absences_count'],
+                'attendance_percent': statistics['attendance_percent']
+            })
+            
+            # Добавляем все остальные данные (оценки, темы и т.д.)
             all_data.extend(sheet_data)
         
         workbook.close()

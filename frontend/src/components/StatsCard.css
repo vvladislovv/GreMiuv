@@ -80,17 +80,17 @@
 
 .stat-value.grade {
   background: rgba(76, 175, 80, 0.15);
-  color: white;
+  color: #1b5e20;
 }
 
 .stat-value.absence {
   background: rgba(244, 67, 54, 0.15);
-  color: white;
+  color: #c62828;
 }
 
 .stat-value.attendance {
   font-size: 1.2rem;
   font-weight: 800;
   padding: 6px 14px;
-  color: white;
+  color: #1b5e20;
 }

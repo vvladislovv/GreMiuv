@@ -3,6 +3,16 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
+// Инициализация Eruda для отладки на мобильных устройствах
+if (import.meta.env.DEV || window.location.search.includes('eruda=true')) {
+  import('eruda').then((eruda) => {
+    eruda.default.init()
+    console.log('🐛 Eruda инициализирован для отладки')
+  }).catch((err) => {
+    console.warn('⚠️ Не удалось загрузить Eruda:', err)
+  })
+}
+
 // Инициализация Telegram WebApp
 if (window.Telegram?.WebApp) {
   const tg = window.Telegram.WebApp
@@ -66,6 +76,19 @@ if (window.Telegram?.WebApp) {
     }
   } else {
     console.log('⚠️ startParam не найден или пустой')
+  }
+  
+  // Очищаем старые тестовые данные из localStorage
+  try {
+    const oldTestFio = localStorage.getItem('test_fio')
+    const oldStudentFio = localStorage.getItem('student_fio')
+    if (oldTestFio === 'Ельченинов В.А.' || oldStudentFio === 'Ельченинов В.А.') {
+      localStorage.removeItem('test_fio')
+      localStorage.removeItem('student_fio')
+      console.log('🧹 Удалены тестовые данные из localStorage')
+    }
+  } catch (e) {
+    // Игнорируем ошибки
   }
   
   console.log('✅ Telegram WebApp готов к работе')

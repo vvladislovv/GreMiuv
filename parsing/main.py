@@ -80,9 +80,9 @@ def save_to_database(parsed_data_per_file):
                 if subject_name not in groups_data[group_name]:
                     groups_data[group_name][subject_name] = []
                 
-                # Добавляем все элементы (включая темы, даже если нет ФИО)
-                # Для тем проверка is_valid_student не нужна
-                if item.get('type') == 'topic' or is_valid_student(item.get('fio')):
+                # Добавляем все элементы (включая темы, статистику, даже если нет ФИО)
+                # Для тем и статистики проверка is_valid_student не нужна
+                if item.get('type') == 'topic' or item.get('type') == 'statistics' or is_valid_student(item.get('fio')):
                     groups_data[group_name][subject_name].append(item)
         
         # Удаляем все старые данные для обновляемых групп
@@ -156,9 +156,10 @@ def save_to_database(parsed_data_per_file):
                 db.add(subject)
                 db.flush()
                 
-                # Отделяем темы от оценок
+                # Отделяем темы от оценок и статистики
                 topics_items = [item for item in items if item.get('type') == 'topic']
-                grades_items = [item for item in items if item.get('type') != 'topic' and item.get('fio')]
+                statistics_items = [item for item in items if item.get('type') == 'statistics']
+                grades_items = [item for item in items if item.get('type') != 'topic' and item.get('type') != 'statistics' and item.get('fio')]
                 
                 # Сохраняем темы занятий
                 for topic_item in topics_items:

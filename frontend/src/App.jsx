@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import './App.css'
 import { BottomNavigation } from './components/BottomNavigation'
-import { Calendar } from './components/Calendar'
 import { Header } from './components/Header'
-import { Rating } from './components/Rating'
+import { NotFound } from './components/NotFound'
+import { preloadRating } from './components/Rating'
+import { StudentNotFound } from './components/StudentNotFound'
 import { SubjectDetail } from './components/SubjectDetail'
-import { SubjectRatings } from './components/SubjectRatings'
 import { SubjectsList } from './components/SubjectsList'
 import { useStudentData } from './hooks/useStudentData'
 import { studentApi } from './services/api'
+
+// Lazy loading для оптимизации загрузки вкладок
+const Rating = lazy(() => import('./components/Rating').then(module => ({ default: module.Rating })))
+const Calendar = lazy(() => import('./components/Calendar'))
 
 function App() {
   const [selectedSubject, setSelectedSubject] = useState(null)
@@ -17,86 +21,100 @@ function App() {
   // Проверяем, что приложение запущено в Telegram Mini App
   const isTelegramWebApp = window.Telegram?.WebApp !== undefined
   
-  // Инициализируем ФИО сразу с тестовым значением для быстрого старта
+  // Получаем initData от Telegram
+  const getInitData = () => {
+    const tg = window.Telegram?.WebApp
+    if (!tg) return ''
+    
+    // Пробуем получить initData напрямую
+    if (tg.initData && tg.initData.trim() !== '') {
+      return tg.initData
+    }
+    
+    return ''
+  }
+  
+  const initData = getInitData()
+  
+  // Очищаем ВСЕ старые тестовые данные из localStorage при первом запуске
+  useEffect(() => {
+    try {
+      // Очищаем все старые тестовые данные
+      const testFio = localStorage.getItem('test_fio')
+      const studentFio = localStorage.getItem('student_fio')
+      
+      if (testFio === 'Ельченинов В.А.') {
+        localStorage.removeItem('test_fio')
+        console.log('🧹 Удален test_fio из localStorage')
+      }
+      
+      if (studentFio === 'Ельченинов В.А.') {
+        localStorage.removeItem('student_fio')
+        console.log('🧹 Удален student_fio из localStorage')
+      }
+      
+      // Если есть старые данные и мы в Telegram, очищаем их
+      if (isTelegramWebApp && (testFio === 'Ельченинов В.А.' || studentFio === 'Ельченинов В.А.')) {
+        console.log('🧹 Очищены все тестовые данные из localStorage')
+      }
+    } catch (e) {
+      console.warn('⚠️ Не удалось очистить localStorage:', e)
+    }
+  }, [isTelegramWebApp])
+  
+  // Инициализируем ФИО - только из Telegram (startParam или initData)
   const getInitialFio = () => {
-    // 1. Проверяем startParam
+    // 1. Проверяем startParam (если есть)
     if (isTelegramWebApp) {
       const startParam = window.Telegram?.WebApp?.startParam
       if (startParam && startParam.trim() !== '') {
         try {
-          return decodeURIComponent(startParam.trim())
+          const decoded = decodeURIComponent(startParam.trim())
+          console.log('✅ ФИО из startParam:', decoded)
+          return decoded
         } catch (e) {
+          console.log('✅ ФИО из startParam (без декодирования):', startParam.trim())
           return startParam.trim()
         }
       }
     }
     
-    // 2. Проверяем URL параметры
-    const urlParams = new URLSearchParams(window.location.search)
-    const fioFromUrl = urlParams.get('fio')
-    if (fioFromUrl) return fioFromUrl
-    
-    // 3. Проверяем localStorage
-    try {
-      const fioFromStorage = localStorage.getItem('student_fio')
-      if (fioFromStorage) return fioFromStorage
-    } catch (e) {
-      // Игнорируем ошибки localStorage
-    }
-    
-    // 4. Используем тестовое ФИО по умолчанию
-    return localStorage.getItem('test_fio') || 'Ельченинов В.А.'
+    // 2. Если нет startParam - возвращаем null (будет загружено из initData)
+    return null
   }
   
   const [fioFromUrl, setFioFromUrl] = useState(getInitialFio())
   
-  // Обновляем ФИО из initData асинхронно (если нужно)
+  // Загружаем ФИО из Telegram через initData
   useEffect(() => {
-    const updateFioFromInitData = async () => {
-      // Если уже есть ФИО из startParam или URL, не обновляем
-      if (fioFromUrl && fioFromUrl !== 'Ельченинов В.А.') {
+    const loadFioFromTelegram = async () => {
+      // Если уже есть ФИО из startParam, не загружаем
+      if (fioFromUrl) {
         return
       }
       
-      const initData = window.Telegram?.WebApp?.initData || ''
+      // Если нет initData, не можем загрузить
+      if (!isTelegramWebApp || !initData || initData.trim() === '') {
+        console.log('⚠️ Нет initData, не можем загрузить данные из Telegram')
+        return
+      }
       
-      // Если есть initData, пробуем получить ФИО из базы данных
-      if (isTelegramWebApp && initData && initData.trim() !== '') {
-        console.log('🔍 Пробуем получить ФИО из базы данных через initData...')
-        try {
-          const response = await studentApi.getFioByTelegramId(initData)
-          if (response?.fio) {
-            console.log('✅ ФИО получено из базы данных:', response.fio)
-            setFioFromUrl(response.fio)
-            try {
-              localStorage.setItem('student_fio', response.fio)
-            } catch (e) {
-              console.warn('⚠️ Не удалось сохранить ФИО:', e)
-            }
-          }
-        } catch (e) {
-          console.warn('⚠️ Ошибка при получении ФИО из базы данных:', e)
+      console.log('🔍 Загружаем данные из Telegram через initData...')
+      try {
+        const response = await studentApi.getByTelegram(initData)
+        if (response?.fio) {
+          console.log('✅ ФИО получено из Telegram:', response.fio)
+          setFioFromUrl(response.fio)
+        } else {
+          console.log('⚠️ ФИО не найдено в базе данных для этого пользователя Telegram')
         }
+      } catch (e) {
+        console.error('❌ Ошибка при получении данных из Telegram:', e)
       }
     }
     
-    updateFioFromInitData()
-  }, [isTelegramWebApp, fioFromUrl])
-  
-  // Сохраняем текущее ФИО в localStorage
-  useEffect(() => {
-    if (fioFromUrl) {
-      try {
-        localStorage.setItem('student_fio', fioFromUrl)
-        localStorage.setItem('test_fio', fioFromUrl)
-      } catch (e) {
-        console.warn('⚠️ Не удалось сохранить ФИО:', e)
-      }
-    }
-  }, [fioFromUrl])
-  
-  // Получаем initData от Telegram
-  const initData = window.Telegram?.WebApp?.initData || ''
+    loadFioFromTelegram()
+  }, [isTelegramWebApp, initData, fioFromUrl])
   
   // Логируем информацию о Telegram Mini App
   if (isTelegramWebApp) {
@@ -108,6 +126,16 @@ function App() {
   }
   
   const { student, subjects, loading, error } = useStudentData(fioFromUrl, initData)
+  
+  // Предзагрузка рейтинга при получении данных студента (для оптимизации)
+  useEffect(() => {
+    if (student?.group_id && currentView === 'subjects') {
+      // Предзагружаем рейтинг в фоне, когда студент загружен
+      preloadRating(student.group_id).catch(err => {
+        console.warn('⚠️ Не удалось предзагрузить рейтинг:', err)
+      })
+    }
+  }, [student?.group_id, currentView])
   
   // Логируем состояние для отладки
   useEffect(() => {
@@ -141,10 +169,15 @@ function App() {
   }
 
   const handleNavigate = (view) => {
+    console.log('🔄 Навигация:', { from: currentView, to: view, hasStudent: !!student, hasSubjects: !!subjects })
     setCurrentView(view)
     if (view === 'subjects') {
       setSelectedSubject(null)
     }
+    // Логируем состояние после навигации
+    setTimeout(() => {
+      console.log('✅ Навигация завершена:', { currentView: view })
+    }, 0)
   }
 
   // Не показываем спиннер загрузки - сразу показываем контент
@@ -159,82 +192,51 @@ function App() {
   //   )
   // }
 
-  if (finalError) {
-    // Разбиваем сообщение об ошибке на строки для лучшего отображения
-    const errorLines = finalError.split('\n').filter(line => line.trim())
-    const mainError = errorLines[0] || finalError
-    const additionalInfo = errorLines.slice(1)
-    
-    // Специальное сообщение для случая, когда ФИО не указано
-    const isMissingFio = !fioFromUrl || finalError === 'ФИО не указано'
-    
+  // Если нет initData и нет startParam - показываем ошибку
+  if (isTelegramWebApp && !initData && !fioFromUrl && !loading) {
     return (
       <div className="app">
-        <div className="error-container">
-          <div className="error-content">
-            <h2>❌ Ошибка</h2>
-            {isMissingFio ? (
-              <div className="error-message">
-                <p className="error-main">
-                  ФИО не указано в параметрах URL
-                </p>
-                <div className="error-details">
-                  <div className="error-line">
-                    Для работы приложения необходимо открыть его через кнопку бота после регистрации.
-                  </div>
-                  <div className="error-line">
-                    Убедитесь, что вы:
-                  </div>
-                  <div className="error-line">  • Зарегистрированы в боте командой /start</div>
-                  <div className="error-line">  • Указали правильное ФИО при регистрации</div>
-                  <div className="error-line">  • Открыли приложение через кнопку "📓 Журнал" в боте</div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="error-message">
-                  <p className="error-main">{mainError}</p>
-                  {additionalInfo.length > 0 && (
-                    <div className="error-details">
-                      {additionalInfo.map((line, index) => (
-                        <div key={index} className="error-line">
-                          {line.trim().startsWith('•') ? (
-                            <span className="error-bullet">{line}</span>
-                          ) : (
-                            <span>{line}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="error-help">
-                  <p>Возможные причины:</p>
-                  <ul>
-                    <li>Студент с таким ФИО не найден в базе данных</li>
-                    <li>ФИО указано неверно (проверьте написание)</li>
-                    <li>Данные еще не загружены в систему</li>
-                  </ul>
-                  <p className="error-note">
-                    {isTelegramWebApp 
-                      ? 'Если вы используете Telegram бота, убедитесь, что вы зарегистрированы с правильным ФИО и открыли приложение через кнопку бота.'
-                      : 'Если вы используете Telegram бота, убедитесь, что вы зарегистрированы с правильным ФИО.'}
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <StudentNotFound 
+          error="Не удалось получить данные из Telegram. Пожалуйста, откройте приложение через кнопку '📓 Журнал' в боте."
+          onRetry={() => window.location.reload()}
+        />
       </div>
     )
   }
 
-  if (!student) {
+  if (finalError) {
+    // Разбиваем сообщение об ошибке на строки для лучшего отображения
+    const errorLines = finalError.split('\n').filter(line => line.trim())
+    const mainError = errorLines[0] || finalError
+    
     return (
       <div className="app">
-        <div className="error-container">
-          <p>❌ Студент не найден. Проверьте параметры доступа.</p>
-        </div>
+        <StudentNotFound 
+          error={mainError}
+          onRetry={() => window.location.reload()}
+        />
+      </div>
+    )
+  }
+
+  if (!student && !loading && !fioFromUrl) {
+    return (
+      <div className="app">
+        <StudentNotFound 
+          error="Не удалось загрузить данные. Пожалуйста, убедитесь, что вы зарегистрированы в боте и открыли приложение через кнопку '📓 Журнал'."
+          onRetry={() => window.location.reload()}
+        />
+      </div>
+    )
+  }
+
+  if (!student && !loading && fioFromUrl) {
+    return (
+      <div className="app">
+        <StudentNotFound 
+          error="Студент не найден. Проверьте параметры доступа."
+          onRetry={() => window.location.reload()}
+        />
       </div>
     )
   }
@@ -243,7 +245,7 @@ function App() {
     <div className="app">
       <Header 
         student={student} 
-        onBack={currentView !== 'subjects' && currentView !== 'rating' && currentView !== 'subject-ratings' && currentView !== 'profile' ? handleBackToSubjects : null}
+        onBack={currentView !== 'subjects' && currentView !== 'rating' && currentView !== 'profile' ? handleBackToSubjects : null}
       />
       
       <div className="app-content" style={{ paddingBottom: '80px' }}>
@@ -264,20 +266,46 @@ function App() {
           />
         )}
         
-        {currentView === 'calendar' && (
-          <Calendar 
-            student={student}
-            subjects={subjects}
+        {currentView === 'subject' && !selectedSubject && (
+          <NotFound 
+            message="Предмет не выбран"
             onBack={handleBackToSubjects}
           />
         )}
         
-        {currentView === 'rating' && (
-          <Rating student={student} />
+        {currentView === 'calendar' && (
+          <Suspense fallback={
+            <div className="calendar-container">
+              <div className="loading-spinner"></div>
+              <p>Загрузка календаря...</p>
+            </div>
+          }>
+            {student && subjects ? (
+              <Calendar 
+                student={student}
+                subjects={subjects}
+                onBack={handleBackToSubjects}
+              />
+            ) : (
+              <div className="calendar-container">
+                <div className="calendar-placeholder">
+                  <div className="placeholder-icon">📚</div>
+                  <p>Загрузка данных...</p>
+                </div>
+              </div>
+            )}
+          </Suspense>
         )}
         
-        {currentView === 'subject-ratings' && (
-          <SubjectRatings student={student} />
+        {currentView === 'rating' && (
+          <Suspense fallback={
+            <div className="rating-container">
+              <div className="loading-spinner-small"></div>
+              <p className="loading-text">Загрузка рейтинга...</p>
+            </div>
+          }>
+            <Rating student={student} />
+          </Suspense>
         )}
         
         {currentView === 'profile' && (
@@ -288,13 +316,24 @@ function App() {
             {student && (
               <div className="profile-content">
                 <div className="profile-avatar-section">
-                  <div className="profile-avatar">
-                    {student.fio ? student.fio.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '👤'}
+                  <div className="profile-avatar" style={{
+                    backgroundImage: student.telegram?.photo_url ? `url(${student.telegram.photo_url})` : 'none',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                  }}>
+                    {!student.telegram?.photo_url && (
+                      student.fio ? student.fio.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '👤'
+                    )}
                   </div>
                   <div className="profile-main-info">
                     <h3 className="profile-name">{student.fio}</h3>
                     {student.group_name && (
                       <p className="profile-group">Группа: {student.group_name}</p>
+                    )}
+                    {student.telegram?.username && (
+                      <p className="profile-group" style={{ marginTop: '4px', fontSize: '14px', opacity: 0.8 }}>
+                        @{student.telegram.username}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -326,6 +365,13 @@ function App() {
               </div>
             )}
           </div>
+        )}
+        
+        {!['subjects', 'subject', 'calendar', 'rating', 'profile'].includes(currentView) && (
+          <NotFound 
+            message="Страница не найдена"
+            onBack={handleBackToSubjects}
+          />
         )}
       </div>
       

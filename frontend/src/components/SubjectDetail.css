@@ -9,14 +9,15 @@
 }
 
 .subject-header-badge {
-  background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+  background: linear-gradient(135deg, #fff5ed 0%, #ffe7d6 100%);
   padding: 20px;
   border-radius: 16px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.2);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.15);
   display: flex;
   align-items: center;
   gap: 12px;
+  border: 1px solid rgba(255, 107, 53, 0.2);
 }
 
 .subject-icon {
@@ -27,8 +28,7 @@
   font-size: 24px;
   font-weight: 700;
   margin: 0;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  color: #1a1a1a;
 }
 
 .subject-stats-summary {
@@ -82,11 +82,11 @@
 }
 
 .attendance-value {
-  color: white;
+  color: #0f5132;
 }
 
 .absence-value {
-  color: white;
+  color: #a94442;
 }
 
 .grades-list {
@@ -190,13 +190,13 @@
 }
 
 .grade-value.excellent {
-  background: #4caf50;
-  color: white;
+  background: #e8f5e9;
+  color: #1b5e20;
 }
 
 .grade-value.good {
-  background: #2196f3;
-  color: white;
+  background: #e3f2fd;
+  color: #1565c0;
 }
 
 .grade-value.satisfactory {
@@ -205,13 +205,13 @@
 }
 
 .grade-value.bad {
-  background: #f44336;
-  color: white;
+  background: #ffebee;
+  color: #c62828;
 }
 
 .grade-value.absence {
-  background: #ff5722;
-  color: white;
+  background: #fff3e0;
+  color: #d84315;
 }
 
 .grade-value.empty {

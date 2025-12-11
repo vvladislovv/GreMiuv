@@ -1,29 +1,66 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { studentApi } from '../services/api'
 import './Calendar.css'
 
-export const Calendar = ({ student, subjects, onBack }) => {
+// Функция для определения класса оценки (вынесена выше для использования в useMemo)
+function getGradeClass(value) {
+  if (!value) return ''
+  const val = value.toString().toLowerCase()
+  if (val.includes('пропуск') || val === 'н' || val === 'н/я') return 'absence'
+  const num = parseFloat(val)
+  if (num >= 4.5) return 'excellent'
+  if (num >= 3.5) return 'good'
+  if (num >= 2.5) return 'satisfactory'
+  if (num >= 2) return 'bad'
+  return ''
+}
+
+export const Calendar = memo(({ student, subjects, onBack }) => {
   const [selectedSubject, setSelectedSubject] = useState(null)
   const [calendarData, setCalendarData] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  // Объявляем loadCalendarData ПЕРЕД использованием в useEffect
+  const loadCalendarData = useCallback(async () => {
+    if (!selectedSubject || !student?.fio) {
+      console.warn('📅 Calendar: нет данных для загрузки', { selectedSubject: !!selectedSubject, fio: !!student?.fio })
+      return
+    }
+    
+    try {
+      setLoading(true)
+      setError(null)
+      console.log('📅 Calendar: загрузка данных для предмета', selectedSubject.id)
+      const data = await studentApi.getGrades(student.fio, selectedSubject.id)
+      console.log('📅 Calendar: данные получены', data)
+      setCalendarData(data)
+    } catch (err) {
+      console.error('❌ Calendar: ошибка загрузки календаря:', err)
+      setError(err.message || 'Ошибка загрузки данных')
+      setCalendarData(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedSubject, student?.fio])
+
+  useEffect(() => {
+    console.log('📅 Calendar: компонент загружен', { 
+      hasStudent: !!student, 
+      hasSubjects: !!subjects, 
+      subjectsCount: subjects?.length 
+    })
+  }, [student, subjects])
 
   useEffect(() => {
     if (selectedSubject) {
       loadCalendarData()
+    } else {
+      // Сбрасываем данные при снятии выбора
+      setCalendarData(null)
+      setError(null)
     }
-  }, [selectedSubject])
-
-  const loadCalendarData = async () => {
-    try {
-      setLoading(true)
-      const data = await studentApi.getGrades(student.fio, selectedSubject.id)
-      setCalendarData(data)
-    } catch (err) {
-      console.error('Ошибка загрузки календаря:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [selectedSubject, loadCalendarData])
 
   const getDaysInMonth = (year, month) => {
     return new Date(year, month + 1, 0).getDate()
@@ -33,14 +70,14 @@ export const Calendar = ({ student, subjects, onBack }) => {
     return new Date(year, month, 1).getDay()
   }
 
-  const renderCalendar = () => {
+  const calendarContent = useMemo(() => {
     if (!calendarData || !calendarData.calendar) {
-      return <div className="no-calendar-data">Выберите предмет для просмотра календаря</div>
+      return null
     }
 
     const months = Object.keys(calendarData.calendar).sort()
     if (months.length === 0) {
-      return <div className="no-calendar-data">Нет данных для отображения</div>
+      return null
     }
 
     return months.map(monthKey => {
@@ -113,6 +150,46 @@ export const Calendar = ({ student, subjects, onBack }) => {
         </div>
       )
     })
+  }, [calendarData])
+
+  // Проверяем наличие subjects
+  if (!subjects || subjects.length === 0) {
+    return (
+      <div className="calendar-container">
+        <div className="calendar-placeholder">
+          <div className="placeholder-icon">📚</div>
+          <p>Нет доступных предметов</p>
+          <p className="placeholder-hint">Предметы еще не загружены</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Показываем ошибку, если есть
+  if (error) {
+    return (
+      <div className="calendar-container">
+        <div className="calendar-placeholder">
+          <div className="placeholder-icon">⚠️</div>
+          <p>Ошибка загрузки календаря</p>
+          <p className="placeholder-hint">{error}</p>
+          <button 
+            onClick={() => selectedSubject && loadCalendarData()}
+            style={{
+              marginTop: '16px',
+              padding: '10px 20px',
+              background: '#ff6b35',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
+          >
+            Попробовать снова
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -122,7 +199,13 @@ export const Calendar = ({ student, subjects, onBack }) => {
         <select
           value={selectedSubject?.id || ''}
           onChange={(e) => {
-            const subject = subjects.find(s => s.id === parseInt(e.target.value))
+            const subjectId = e.target.value
+            if (!subjectId) {
+              setSelectedSubject(null)
+              setCalendarData(null)
+              return
+            }
+            const subject = subjects.find(s => s.id === parseInt(subjectId))
             setSelectedSubject(subject)
           }}
           className="subject-select"
@@ -171,7 +254,7 @@ export const Calendar = ({ student, subjects, onBack }) => {
           <div className="loading-spinner"></div>
           <p>Загрузка календаря...</p>
         </div>
-      ) : selectedSubject && calendarData ? (
+      ) : selectedSubject && calendarData && calendarContent ? (
         <div className="calendar-content">
           <div className="calendar-legend">
             <div className="legend-item">
@@ -195,10 +278,16 @@ export const Calendar = ({ student, subjects, onBack }) => {
               <span>Пропуск</span>
             </div>
           </div>
-          {renderCalendar()}
+          {calendarContent}
+        </div>
+      ) : selectedSubject && calendarData && !calendarContent ? (
+        <div className="calendar-placeholder">
+          <div className="placeholder-icon">📅</div>
+          <p>Нет данных для отображения календаря</p>
         </div>
       ) : selectedSubject ? (
         <div className="calendar-placeholder">
+          <div className="loading-spinner"></div>
           <p>📅 Загрузка данных календаря...</p>
         </div>
       ) : (
@@ -210,16 +299,9 @@ export const Calendar = ({ student, subjects, onBack }) => {
       )}
     </div>
   )
-}
+})
 
-function getGradeClass(value) {
-  if (!value) return ''
-  const val = value.toString().toLowerCase()
-  if (val.includes('пропуск') || val === 'н' || val === 'н/я') return 'absence'
-  const num = parseFloat(val)
-  if (num >= 4.5) return 'excellent'
-  if (num >= 3.5) return 'good'
-  if (num >= 2.5) return 'satisfactory'
-  if (num >= 2) return 'bad'
-  return ''
-}
+Calendar.displayName = 'Calendar'
+
+// Default export для совместимости с lazy loading
+export default Calendar

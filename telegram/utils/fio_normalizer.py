@@ -60,3 +60,4 @@ def normalize_fio_to_initials(fio: str) -> str:
         return surname
 
 
+

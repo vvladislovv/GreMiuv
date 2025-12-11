@@ -163,4 +163,11 @@ export const studentApi = {
         'X-Telegram-Init-Data': initData
       }
     }).then(res => res.data),
+  
+  getByTelegram: (initData) =>
+    api.get('/student/by-telegram', {
+      headers: {
+        'X-Telegram-Init-Data': initData
+      }
+    }).then(res => res.data),
 }

@@ -15,7 +15,13 @@ from pathlib import Path
 security = HTTPBearer()
 
 # Путь к файлу с токенами
-TOKEN_FILE = Path(__file__).parent.parent.parent / "data" / "api_tokens.json"
+# На Vercel используем временную директорию, так как файловая система доступна только для записи в /tmp
+if os.getenv("VERCEL"):
+    # На Vercel используем /tmp для записи файлов
+    TOKEN_FILE = Path("/tmp") / "api_tokens.json"
+else:
+    # Локально используем data директорию
+    TOKEN_FILE = Path(__file__).parent.parent.parent / "data" / "api_tokens.json"
 
 
 def generate_token() -> str:
@@ -25,20 +31,25 @@ def generate_token() -> str:
 
 def load_tokens() -> dict:
     """Загружает токены из файла"""
-    if TOKEN_FILE.exists():
-        try:
+    try:
+        if TOKEN_FILE.exists():
             with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception:
-            return {}
+    except Exception as e:
+        # На Vercel файл может не существовать при первом запуске - это нормально
+        print(f"Warning: Could not load tokens: {e}")
     return {}
 
 
 def save_tokens(tokens: dict):
     """Сохраняет токены в файл"""
-    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
-        json.dump(tokens, f, indent=2, ensure_ascii=False)
+    try:
+        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+            json.dump(tokens, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        # На Vercel может быть проблема с записью - логируем, но не падаем
+        print(f"Warning: Could not save tokens: {e}")
 
 
 def create_token(name: str = "default") -> str:

@@ -17,24 +17,29 @@ app = FastAPI(
 setup_cors(app)
 
 # Инициализируем систему аутентификации
-@app.on_event("startup")
-async def startup_event():
-    """Инициализация при запуске приложения"""
-    from backend.utils.auth import TOKEN_FILE
-    
-    token = init_auth()
-    print(f"\n{'='*60}")
-    print(f"🔑 ТОКЕН ДОСТУПА К API")
-    print(f"{'='*60}")
-    print(f"Токен: {token}")
-    print(f"")
-    print(f"📁 Файл с токенами: {TOKEN_FILE}")
-    print(f"")
-    print(f"📝 Использование:")
-    print(f"   Заголовок: Authorization: Bearer {token}")
-    print(f"")
-    print(f"🌐 Получить токен через API: GET http://localhost:5000/api/token")
-    print(f"{'='*60}\n")
+# ВАЖНО: На Vercel startup events не работают, поэтому инициализация происходит лениво
+# при первом запросе через get_or_create_token()
+try:
+    # Пытаемся инициализировать токен при импорте (только если не на Vercel)
+    import os
+    if not os.getenv("VERCEL"):
+        from backend.utils.auth import TOKEN_FILE
+        token = init_auth()
+        print(f"\n{'='*60}")
+        print(f"🔑 ТОКЕН ДОСТУПА К API")
+        print(f"{'='*60}")
+        print(f"Токен: {token}")
+        print(f"")
+        print(f"📁 Файл с токенами: {TOKEN_FILE}")
+        print(f"")
+        print(f"📝 Использование:")
+        print(f"   Заголовок: Authorization: Bearer {token}")
+        print(f"")
+        print(f"🌐 Получить токен через API: GET http://localhost:5000/api/token")
+        print(f"{'='*60}\n")
+except Exception as e:
+    # На Vercel это нормально - инициализация произойдет при первом запросе
+    pass
 
 # Подключаем роуты
 app.include_router(groups.router)

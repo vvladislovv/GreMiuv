@@ -188,12 +188,36 @@ def save_to_database(parsed_data_per_file):
                     date = item.get('date')
                     grade_value = item.get('grade', '')
                     
+                    # КРИТИЧЕСКИ ВАЖНО: Строгие проверки валидности данных
                     # Пропускаем некорректные даты
-                    if not date or (hasattr(date, 'year') and date.year < 2000):
+                    if not date:
+                        continue
+                    
+                    # Проверяем, что дата валидна (год >= 2000, месяц 1-12, день 1-31)
+                    if hasattr(date, 'year'):
+                        if date.year < 2000 or date.year > 2100:
+                            continue
+                        if date.month < 1 or date.month > 12:
+                            continue
+                        if date.day < 1 or date.day > 31:
+                            continue
+                    else:
+                        continue
+                    
+                    # Проверяем, что оценка не пустая
+                    if not grade_value or str(grade_value).strip() == '':
+                        continue
+                    
+                    # Проверяем, что ФИО не пустое
+                    if not fio or str(fio).strip() == '':
                         continue
                     
                     # Нормализуем ФИО в формат "Фамилия И.О."
                     fio_normalized = normalize_fio_to_initials(str(fio).strip())
+                    
+                    # Проверяем, что нормализованное ФИО валидно
+                    if not fio_normalized or len(fio_normalized) < 3:
+                        continue
                     
                     # Получаем студента из словаря (он уже должен быть создан)
                     student = students_map.get(fio_normalized)

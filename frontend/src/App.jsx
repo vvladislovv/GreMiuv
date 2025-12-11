@@ -248,7 +248,7 @@ function App() {
         onBack={currentView !== 'subjects' && currentView !== 'rating' && currentView !== 'profile' ? handleBackToSubjects : null}
       />
       
-      <div className="app-content" style={{ paddingBottom: '80px' }}>
+      <div className="app-content" style={{ paddingBottom: '120px' }}>
         {currentView === 'subjects' && (
           <SubjectsList 
             subjects={subjects}

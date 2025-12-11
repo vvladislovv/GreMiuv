@@ -165,6 +165,7 @@ def parse_grade_value(value):
     - Исключает даты и другие некорректные значения
     - Возвращает строку с оценкой или "пропуск"
     """
+    # КРИТИЧЕСКИ ВАЖНО: Строгая проверка на пустые значения
     if value is None:
         return None
     
@@ -172,16 +173,18 @@ def parse_grade_value(value):
     if isinstance(value, (datetime, date_type)):
         return None
     
+    # Преобразуем в строку и проверяем на пустоту
     value_str = str(value).strip()
     
-    if not value_str:
+    # Если пустая строка или только пробелы - не парсим
+    if not value_str or value_str == '' or value_str.isspace():
+        return None
+    
+    # Если это просто 0 (не оценка) - пропускаем
+    if value_str == '0' or value_str == '0.0':
         return None
     
     value_lower = value_str.lower()
-    
-    # Проверяем на пропуск (включая символ *)
-    if any(word in value_lower for word in ['пропуск', 'н', 'н/я', 'неявка', 'нб', 'н/б']) or value_str == '*':
-        return "пропуск"
     
     # Исключаем даты (формат YYYY-MM-DD или похожий)
     if re.match(r'^\d{4}-\d{2}-\d{2}', value_str):
@@ -190,6 +193,52 @@ def parse_grade_value(value):
     # Исключаем значения, которые выглядят как даты с временем
     if re.match(r'^\d{4}-\d{2}-\d{2}\s+\d{2}', value_str):
         return None
+    
+    # ВАЖНО: Проверяем на дробь СНАЧАЛА, до проверки на пропуск!
+    # Дроби типа "н/5", "д/4", "н/б", "3/5" и т.д.
+    if '/' in value_str:
+        parts = value_str.split('/')
+        if len(parts) >= 2:
+            first_part = parts[0].strip().lower()
+            second_part = parts[1].strip().lower()
+            
+            # Если вторая часть - это "б" или "н", то это пропуск
+            if second_part in ['б', 'н', 'нб', 'н/б']:
+                return "пропуск"
+            
+            # Проверяем, являются ли обе части числами
+            try:
+                first_num = int(parts[0].strip())
+                second_num = int(parts[1].strip())
+                
+                # Если обе части - валидные оценки (1-5), возвращаем дробь целиком
+                if (1 <= first_num <= 5) and (1 <= second_num <= 5):
+                    return f"{first_num}/{second_num}"
+            except ValueError:
+                pass
+            
+            # Если только вторая часть - число (для "н/5", "д/4" и т.д.)
+            try:
+                second_num = int(parts[1].strip())
+                if 1 <= second_num <= 5:
+                    # Проверяем, что первая часть - это буква (н, д и т.д.)
+                    if first_part.isalpha() and len(first_part) <= 2:
+                        return str(second_num)
+            except ValueError:
+                pass
+            
+            # Если только первая часть - число
+            try:
+                first_num = int(parts[0].strip())
+                if 1 <= first_num <= 5:
+                    return str(first_num)
+            except ValueError:
+                pass
+    
+    # Проверяем на пропуск (ПОСЛЕ проверки на дроби!)
+    # Проверяем только если это не дробь
+    if any(word == value_lower for word in ['н', 'нб', 'н/б', 'пропуск', 'н/я', 'неявка']) or value_str == '*':
+        return "пропуск"
     
     # Пытаемся извлечь оценку (число)
     # Сначала пробуем простое преобразование в число
@@ -309,6 +358,8 @@ def find_date_columns(header_row, worksheet, header_row_idx):
     last_month_year = None  # Последний найденный месяц (для распространения на следующие колонки)
     
     if month_row:
+        # ВАЖНО: Обрабатываем ВСЕ колонки, включая пустые (для объединенных ячеек)
+        # Распространяем месяц на все колонки до следующего месяца
         for idx, cell in enumerate(month_row):
             month_year = find_month_in_cell(cell.value)
             if month_year:
@@ -317,45 +368,93 @@ def find_date_columns(header_row, worksheet, header_row_idx):
             elif last_month_year:
                 # Если месяц не найден, но есть последний найденный месяц,
                 # распространяем его на эту колонку (месяцы могут быть объединены)
+                # Это важно для правильного определения дат в колонках с пустыми ячейками
                 column_months[idx] = last_month_year
     
     # Колонка C имеет индекс 2 (A=0, B=1, C=2)
-    # Колонка AC имеет индекс 28 (A=0, ..., Z=25, AA=26, AB=27, AC=28)
+    # Таблица оценок идет от C и до конца (не ограничиваем жестко)
+    # Но обычно это до колонки Z или дальше
     C_COLUMN_INDEX = 2
-    AC_COLUMN_INDEX = 28
     
-    # Парсим даты из заголовков (только колонки от C до AC)
+    # Парсим даты из заголовков (начиная с колонки C)
+    # ВАЖНО: Обрабатываем ТОЛЬКО колонки с числами в заголовке
+    # НЕ создаем даты для пустых ячеек!
+    last_date = None  # Последняя найденная дата
+    last_date_col_idx = None  # Индекс последней колонки с датой
+    dates_in_month = {}  # месяц -> список дат (для проверки логики)
+    
     for idx, cell in enumerate(header_row):
-        # Ограничиваем парсинг колонками от C до AC включительно
-        if idx < C_COLUMN_INDEX or idx > AC_COLUMN_INDEX:
+        # Начинаем парсить с колонки C
+        # Не ограничиваем конец, чтобы захватить все даты
+        if idx < C_COLUMN_INDEX:
             continue
-            
+        
+        # КРИТИЧЕСКИ ВАЖНО: Пропускаем пустые ячейки!
+        # Если ячейка пустая, значит в этой колонке нет даты
         if not cell.value:
             continue
         
         cell_value = cell.value
+        current_date = None
         
         # Если это число от 1 до 31 - это день месяца
-        if isinstance(cell_value, (int, float)) and 1 <= cell_value <= 31:
-            day = int(cell_value)
+        # КРИТИЧЕСКИ ВАЖНО: Проверяем, что это именно целое число дня, а не дробное или 0
+        if isinstance(cell_value, (int, float)):
+            # Проверяем, что это целое число от 1 до 31 (НЕ 0, НЕ дробное)
+            day_float = float(cell_value)
+            day_int = int(day_float)
+            
+            # Если это не целое число (например, 12.5) или 0 - пропускаем
+            if day_float != day_int or day_int < 1 or day_int > 31:
+                continue
+            
+            day = day_int
             
             # Определяем месяц для этой колонки
             month_year = column_months.get(idx)
             
+            # Создаем дату ТОЛЬКО если есть месяц для этой колонки
             if month_year:
                 month, year = month_year
                 try:
-                    parsed_date = date_type(year, month, day)
-                    date_columns.append((idx, parsed_date))
-                    continue
+                    current_date = date_type(year, month, day)
+                    
+                    # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Проверяем, что дата логична
+                    # Если есть предыдущая дата в том же месяце, проверяем разницу
+                    if month not in dates_in_month:
+                        dates_in_month[month] = []
+                    
+                    # Если в месяце уже есть даты, проверяем логику
+                    if dates_in_month[month]:
+                        # Если новая дата меньше последней даты в месяце более чем на 7 дней,
+                        # это может быть ошибка (дата из другого места таблицы)
+                        last_date_in_month = max(dates_in_month[month])
+                        days_diff = (current_date - last_date_in_month).days
+                        
+                        # Если разница отрицательная (дата раньше последней) и больше 7 дней,
+                        # это подозрительно - возможно, это дата из другой части таблицы
+                        if days_diff < -7:
+                            # Пропускаем эту дату - она выглядит как ошибка
+                            continue
+                    
+                    dates_in_month[month].append(current_date)
+                    last_date = current_date
+                    last_date_col_idx = idx
                 except ValueError:
                     # Если дата невалидна (например, 31 февраля), пропускаем
                     pass
         
         # Пытаемся распарсить как полную дату (на случай если формат другой)
-        parsed_date = parse_date(cell_value)
-        if parsed_date:
-            date_columns.append((idx, parsed_date))
+        if not current_date:
+            parsed_date = parse_date(cell_value)
+            if parsed_date:
+                current_date = parsed_date
+                last_date = current_date
+                last_date_col_idx = idx
+        
+        # Добавляем дату в список, если она найдена
+        if current_date:
+            date_columns.append((idx, current_date))
     
     return date_columns
 
@@ -603,18 +702,36 @@ def parse_sheet(worksheet, group_name, subject_name):
             student_fio = normalize_fio_to_initials(student_fio)
             
             # Парсим оценки для каждой даты
+            # ВАЖНО: Берем данные ТОЛЬКО из колонок, которые были найдены в find_date_columns
+            # Не создаем даты для колонок без чисел в заголовке
             for date_col_idx, date in date_columns:
-                if len(row) > date_col_idx:
-                    cell = row[date_col_idx]
-                    grade_value = parse_grade_value(cell.value)
-                    if grade_value:
-                        data.append({
-                            'group': group_name,
-                            'subject': subject_name,
-                            'fio': student_fio,
-                            'date': date,
-                            'grade': grade_value
-                        })
+                # Проверяем, что строка достаточно длинная
+                if len(row) <= date_col_idx:
+                    continue
+                
+                cell = row[date_col_idx]
+                
+                # КРИТИЧЕСКИ ВАЖНО: Пропускаем пустые ячейки
+                # Если ячейка пустая (None, пустая строка, пробелы), не парсим оценку
+                if not cell or cell.value is None:
+                    continue
+                
+                # Проверяем, что значение не пустая строка
+                if isinstance(cell.value, str) and not cell.value.strip():
+                    continue
+                
+                # Парсим оценку только если ячейка не пустая
+                grade_value = parse_grade_value(cell.value)
+                
+                # Добавляем оценку только если она валидна и не None
+                if grade_value:
+                    data.append({
+                        'group': group_name,
+                        'subject': subject_name,
+                        'fio': student_fio,
+                        'date': date,
+                        'grade': grade_value
+                    })
     
     # Парсим таблицу с темами занятий (ищем по всему листу)
     topics_data = parse_topics_table(worksheet, group_name, subject_name, start_row=1)

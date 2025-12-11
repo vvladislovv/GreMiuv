@@ -21,5 +21,6 @@ from mangum import Mangum
 handler = Mangum(app, lifespan="off")
 
 # Экспортируем handler для Vercel
-# Vercel ищет переменную 'handler' или 'app' в файле
+# Vercel ищет переменную 'handler' в файле
+# Также экспортируем app на случай, если Vercel будет искать его
 __all__ = ['app', 'handler']

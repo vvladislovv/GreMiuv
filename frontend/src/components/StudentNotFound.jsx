@@ -35,3 +35,6 @@ export const StudentNotFound = ({ error, onRetry = null }) => {
     </div>
   )
 }
+
+
+

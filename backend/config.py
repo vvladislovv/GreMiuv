@@ -39,9 +39,26 @@ if VERCEL_ENV:
 # В production лучше указать конкретный домен
 CORS_ORIGINS.append("https://*.vercel.app")
 
+# Добавляем Render.com домены
+RENDER_SERVICE_URL = os.getenv("RENDER_SERVICE_URL", "")
+RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+if RENDER_SERVICE_URL:
+    if not RENDER_SERVICE_URL.startswith("http"):
+        CORS_ORIGINS.append(f"https://{RENDER_SERVICE_URL}")
+    else:
+        CORS_ORIGINS.append(RENDER_SERVICE_URL)
+if RENDER_EXTERNAL_URL:
+    if not RENDER_EXTERNAL_URL.startswith("http"):
+        CORS_ORIGINS.append(f"https://{RENDER_EXTERNAL_URL}")
+    else:
+        CORS_ORIGINS.append(RENDER_EXTERNAL_URL)
+# Разрешаем все домены Render (для preview деплоев)
+CORS_ORIGINS.append("https://*.onrender.com")
+
 # Настройки сервера
-SERVER_HOST = "0.0.0.0"
-SERVER_PORT = 5000
+# Render.com автоматически устанавливает переменную PORT
+SERVER_HOST = os.getenv("HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("PORT", 5000))
 
 def setup_cors(app):
     """Настройка CORS для приложения"""
@@ -64,6 +81,20 @@ def setup_cors(app):
             allow_origins.append(f"https://{custom_domain}")
         else:
             allow_origins.append(custom_domain)
+    
+    # Добавляем Render.com домены из переменных окружения
+    render_service_url = os.getenv("RENDER_SERVICE_URL", "")
+    render_external_url = os.getenv("RENDER_EXTERNAL_URL", "")
+    if render_service_url:
+        if not render_service_url.startswith("http"):
+            allow_origins.append(f"https://{render_service_url}")
+        else:
+            allow_origins.append(render_service_url)
+    if render_external_url:
+        if not render_external_url.startswith("http"):
+            allow_origins.append(f"https://{render_external_url}")
+        else:
+            allow_origins.append(render_external_url)
     
     # Для разработки на Vercel можно временно разрешить все домены
     # В production лучше указать конкретные домены через переменные окружения

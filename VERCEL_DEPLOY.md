@@ -145,3 +145,6 @@ vercel --prod
 ### Ошибка: Timeout
 - Увеличьте `maxDuration` в `vercel.json` (максимум 60 сек для Pro)
 - Оптимизируйте запросы к БД
+
+
+

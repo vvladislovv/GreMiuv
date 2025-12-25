@@ -18,6 +18,11 @@ CORS_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
     "https://horribly-fun-stint.cloudpub.ru",
+    # Production домен
+    "https://vildanai.ru",
+    "https://www.vildanai.ru",
+    "http://vildanai.ru",
+    "http://www.vildanai.ru",
 ]
 
 # Добавляем Vercel домены, если они есть
@@ -55,8 +60,15 @@ if RENDER_EXTERNAL_URL:
 # Разрешаем все домены Render (для preview деплоев)
 CORS_ORIGINS.append("https://*.onrender.com")
 
+# Добавляем Fly.io домены
+FLY_APP_NAME = os.getenv("FLY_APP_NAME", "")
+if FLY_APP_NAME:
+    CORS_ORIGINS.append(f"https://{FLY_APP_NAME}.fly.dev")
+# Разрешаем все домены Fly.io (для preview деплоев)
+CORS_ORIGINS.append("https://*.fly.dev")
+
 # Настройки сервера
-# Render.com автоматически устанавливает переменную PORT
+# Render.com и Fly.io автоматически устанавливают переменную PORT
 SERVER_HOST = os.getenv("HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("PORT", 5000))
 
@@ -95,6 +107,11 @@ def setup_cors(app):
             allow_origins.append(f"https://{render_external_url}")
         else:
             allow_origins.append(render_external_url)
+    
+    # Добавляем Fly.io домены из переменных окружения
+    fly_app_name = os.getenv("FLY_APP_NAME", "")
+    if fly_app_name:
+        allow_origins.append(f"https://{fly_app_name}.fly.dev")
     
     # Для разработки на Vercel можно временно разрешить все домены
     # В production лучше указать конкретные домены через переменные окружения

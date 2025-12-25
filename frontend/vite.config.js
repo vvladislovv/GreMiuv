@@ -8,6 +8,8 @@ export default defineConfig({
     port: 3000,
     allowedHosts: [
       'horribly-fun-stint.cloudpub.ru',
+      'vildanai.ru',
+      'www.vildanai.ru',
       'localhost',
       '127.0.0.1'
     ],

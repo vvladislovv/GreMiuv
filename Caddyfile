@@ -1,0 +1,59 @@
+# Caddyfile для VildanAi.ru
+# Автоматически получает SSL сертификат через Let's Encrypt
+
+# Production домен
+vildanai.ru, www.vildanai.ru {
+    # Логирование (в stdout для Docker)
+    log {
+        output stdout
+        format console
+    }
+
+    # API прокси (должен быть первым, чтобы обрабатывать /api/*)
+    handle /api/* {
+        reverse_proxy localhost:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Фронтенд (статические файлы)
+    root * /app/frontend/dist
+    file_server
+
+    # Fallback для SPA (React Router) - должен быть последним
+    handle {
+        try_files {path} /index.html
+    }
+}
+
+# Localhost для разработки
+localhost, 127.0.0.1 {
+    # Логирование (в stdout для Docker)
+    log {
+        output stdout
+        format console
+    }
+    
+    # API прокси
+    handle /api/* {
+        reverse_proxy localhost:5000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Фронтенд (статические файлы)
+    root * /app/frontend/dist
+    file_server
+
+    # Fallback для SPA (React Router)
+    handle {
+        try_files {path} /index.html
+    }
+}
+

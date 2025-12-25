@@ -9,8 +9,8 @@
 4. Сохраняет новые данные в БД
 5. Сохраняет информацию о парсинге в таблицу ParseLog
 6. Выводит сообщение о завершении парсинга в консоль
-7. Автоматически обновляется каждые 15 минут по реальному времени
-   (в 00, 15, 30, 45 минут каждого часа)
+7. Автоматически обновляется раз в час
+   (в 00 минут каждого часа)
 
 Точка входа: main()
 """
@@ -265,33 +265,43 @@ def parse_and_save():
     error_message = None
     
     try:
+        print("=" * 60, flush=True)
+        print(f"🔄 [PARSER] Начало парсинга: {parse_start_time.strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+        print("=" * 60, flush=True)
         log_parser_info(
             "Начало парсинга",
             "Запуск процесса парсинга Excel файлов с Google Drive"
         )
         
         # Скачиваем файлы
+        print("📥 [PARSER] Скачивание файлов с Google Drive...", flush=True)
         downloaded_files = download_target_files()
         
         if not downloaded_files:
             status = "error"
             error_message = "Файлы не были скачаны"
+            print("❌ [PARSER] Файлы не были скачаны", flush=True)
             log_parser_error(
                 "Файлы не были скачаны",
                 description="Не удалось скачать файлы с Google Drive"
             )
             return
         
+        print(f"✅ [PARSER] Скачано файлов: {len(downloaded_files)}", flush=True)
+        for f in downloaded_files:
+            print(f"   📄 [PARSER] - {os.path.basename(f)}", flush=True)
         log_parser_info(
             f"Скачано файлов: {len(downloaded_files)}",
             f"Файлы: {', '.join([os.path.basename(f) for f in downloaded_files])}"
         )
         
         # Парсим файлы
+        print("📊 [PARSER] Начало парсинга Excel файлов...", flush=True)
         parsed_data_per_file = {}
         for file_path in downloaded_files:
             try:
                 file_name = os.path.basename(file_path)
+                print(f"   🔍 [PARSER] Обработка файла: {file_name}...", flush=True)
                 log_parser_info(
                     f"Парсинг файла: {file_name}",
                     f"Обработка Excel файла"
@@ -301,6 +311,7 @@ def parse_and_save():
                 parsed_data_per_file[file_name] = data
                 files_processed += 1
                 
+                print(f"   ✅ [PARSER] Файл обработан: {file_name} (записей: {len(data)})", flush=True)
                 log_parser_info(
                     f"Файл обработан: {file_name}",
                     f"Найдено записей: {len(data)}"
@@ -323,6 +334,10 @@ def parse_and_save():
                 if item.get('group')
             ))
             
+            print(f"💾 [PARSER] Сохранение данных в БД...", flush=True)
+            print(f"   👥 [PARSER] Групп для обновления: {len(groups_updated_list)}", flush=True)
+            if groups_updated_list:
+                print(f"   📋 [PARSER] Группы: {', '.join(groups_updated_list)}", flush=True)
             log_parser_info(
                 f"Сохранение данных в БД",
                 f"Обновление групп: {', '.join(groups_updated_list) if groups_updated_list else 'нет'}"
@@ -330,6 +345,7 @@ def parse_and_save():
             
             save_to_database(parsed_data_per_file)
             
+            print(f"✅ [PARSER] Данные сохранены в БД", flush=True)
             log_parser_info(
                 f"Данные сохранены в БД",
                 f"Обновлено групп: {len(groups_updated_list)}"
@@ -368,12 +384,15 @@ def parse_and_save():
             }
         )
         
-        print(f"\n✅ Парсинг завершен успешно!")
-        print(f"   📅 Время: {parse_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"   ⏱️  Длительность: {duration:.2f} сек")
-        print(f"   📁 Файлов обработано: {files_processed}")
-        print(f"   👥 Групп обновлено: {len(groups_updated_list)} ({groups_str})")
-        print(f"   💾 Данные сохранены в БД\n")
+        print("=" * 60, flush=True)
+        print(f"✅ [PARSER] Парсинг завершен успешно!", flush=True)
+        print(f"   📅 [PARSER] Время: {parse_end_time.strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
+        print(f"   ⏱️  [PARSER] Длительность: {duration:.2f} сек", flush=True)
+        print(f"   📁 [PARSER] Файлов обработано: {files_processed}", flush=True)
+        print(f"   👥 [PARSER] Групп обновлено: {len(groups_updated_list)} ({groups_str})", flush=True)
+        print(f"   💾 [PARSER] Данные сохранены в БД", flush=True)
+        print("=" * 60, flush=True)
+        print("", flush=True)
         
     except KeyboardInterrupt:
         status = "error"
@@ -422,7 +441,10 @@ def parse_and_save():
             db.rollback()
         finally:
             db.close()
-        print(f"\n❌ Ошибка при парсинге: {error_message}\n")
+        print("=" * 60, flush=True)
+        print(f"❌ [PARSER] Ошибка при парсинге: {error_message}", flush=True)
+        print("=" * 60, flush=True)
+        print("", flush=True)
 
 
 def main():
@@ -432,8 +454,8 @@ def main():
     Логика:
     1. Инициализация БД
     2. Первый запуск парсинга
-    3. Настройка автоматического обновления каждые 15 минут по реальному времени
-       (в 00, 15, 30, 45 минут каждого часа)
+    3. Настройка автоматического обновления раз в час
+       (в 00 минут каждого часа)
     4. Запуск планировщика
     """
     init_db()
@@ -441,12 +463,9 @@ def main():
     # Выполняем первый парсинг сразу (без вывода)
     parse_and_save()
     
-    # Настраиваем автоматический запуск каждые 15 минут по реальному времени
-    # Запуск в 00, 15, 30, 45 минут каждого часа
+    # Настраиваем автоматический запуск раз в час
+    # Запуск в 00 минут каждого часа
     schedule.every().hour.at(":00").do(parse_and_save)
-    schedule.every().hour.at(":15").do(parse_and_save)
-    schedule.every().hour.at(":30").do(parse_and_save)
-    schedule.every().hour.at(":45").do(parse_and_save)
     
     # Запускаем планировщик
     while True:

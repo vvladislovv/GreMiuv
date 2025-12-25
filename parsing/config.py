@@ -48,5 +48,5 @@ DATABASE_PATH = os.path.join(BASE_DIR, "data", "students.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
 
 # Расписание
-PARSE_INTERVAL_MINUTES = 15
+PARSE_INTERVAL_MINUTES = 60  # Парсинг раз в час
 

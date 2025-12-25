@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vite
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Downloaded files
+downloaded_files/
+temp_*
+
+# Build
+build/
+dist/
+
+# Assets (screenshots, images)
+assets/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+!frontend/public/*.png
+!frontend/public/*.jpg
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Config files for other platforms
+vercel.json
+render.yaml
+
+# Logs
+*.log
+logs/
+
+# Data (будет монтироваться как volume)
+data/*.db
+data/*.sqlite
